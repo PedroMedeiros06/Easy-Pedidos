@@ -1,7 +1,7 @@
 import React from "react";
 import { Search, ArrowUpDown, Calendar, SlidersHorizontal } from "lucide-react";
 
-export default function FiltrosRestaurante({
+export default function FiltrosFuncionarios({
   pesquisa,
   setPesquisa,
   ordem,

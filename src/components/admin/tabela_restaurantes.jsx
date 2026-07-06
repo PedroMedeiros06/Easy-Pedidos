@@ -1,30 +1,34 @@
 import React, { useState } from "react";
-import { CheckCircle, Ban, Trash2, ShieldAlert, MoreVertical, MessageSquare, Edit3 } from "lucide-react";
+import { CheckCircle, Ban, Trash2, ShieldAlert, MoreVertical, MessageSquare, Edit3, AlertCircle } from "lucide-react";
 import { restauranteApi } from "../../api/restaurante"; // 🌟 Camada de API centralizada
 
 export default function TabelaRestaurantes({ restaurantes, setRestaurantes, onActionSuccess, onEditarClick }) {
   const [menuAbertoId, setMenuAbertoId] = useState(null);
 
-  const tratarBloqueio = async (id, statusAtual) => {
+  const tratarBloqueio = async (id, statusAtual, motivoAtual) => {
     // Se ele já estiver bloqueado (bloqueado = true), o novo status ativo será true (desbloquear)
-    const novoStatusAtivo = !!statusAtual; 
+    const novoStatusAtivo = statusAtual; 
     const acaoTexto = novoStatusAtivo ? "liberação" : "bloqueio";
 
-    const motivo = prompt(`Digite o motivo da ${acaoTexto} (opcional):`);
+    const motivo = prompt(`Digite o motivo da ${acaoTexto} (opcional):`, !novoStatusAtivo ? "" : motivoAtual);
     if (motivo === null) return; // Cancela se o usuário clicar em Cancelar
 
     try {
-      // 🌟 Consumindo o método limpo da API do NestJS
-      await restauranteApi.alterarStatus(id, novoStatusAtivo, motivo.trim());
+      // 🌟 Ajustado para passar o objeto { ativo, motivo } correto para a API do NestJS
+      await restauranteApi.alterarStatus(id, novoStatusAtivo, motivo)
       
       setMenuAbertoId(null);
 
-      // Atualiza o estado na memória imediatamente para refletir na interface
+      // Atualiza o estado na memória imediatamente para refletir na interface sem lag
       if (setRestaurantes) {
         setRestaurantes((listaAtual) => 
           listaAtual.map((res) => 
             res.id === id 
-              ? { ...res, bloqueado: !novoStatusAtivo, motivoBloqueio: motivo.trim() || null } 
+              ? { 
+                  ...res, 
+                  bloqueado: !novoStatusAtivo, 
+                  motivoBloqueio: novoStatusAtivo ? null : (motivo.trim() || null) 
+                } 
               : res
           )
         );
@@ -40,13 +44,11 @@ export default function TabelaRestaurantes({ restaurantes, setRestaurantes, onAc
     if (!confirm("⚠️ ATENÇÃO: Isso apagará permanentemente o restaurante e TODOS os funcionários dele. Continuar?")) return;
 
     try {
-      // 🌟 Consumindo o método DELETE centralizado da nossa API
       const dados = await restauranteApi.deletar(id);
 
       alert(dados?.mensagem || "Restaurante removido com sucesso!");
       setMenuAbertoId(null);
       
-      // Remove do estado local para sumir da tela instantaneamente
       if (setRestaurantes) {
         setRestaurantes((listaAtual) => listaAtual.filter((res) => res.id !== id));
       }
@@ -94,7 +96,7 @@ export default function TabelaRestaurantes({ restaurantes, setRestaurantes, onAc
                         {res.nome?.slice(0, 2).toUpperCase() || "RE"}
                       </div>
                     )}
-                    <div className="truncate max-w-[180px]">
+                    <div className="truncate max-w-45">
                       <div className="font-semibold text-slate-200 truncate">{res.nome}</div>
                       <div className="text-xs text-slate-500 mt-0.5 truncate">{res.nomeDono}</div>
                     </div>
@@ -136,10 +138,10 @@ export default function TabelaRestaurantes({ restaurantes, setRestaurantes, onAc
                         <ShieldAlert size={12} /> Suspenso
                       </span>
                       
-                      {/* Tooltip flutuante */}
+                      {/* Tooltip flutuante 🌟 Corrigido para res.motivoBloqueio */}
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 hidden group-hover:block w-48 bg-slate-950 border border-slate-800 text-slate-300 text-xs rounded-xl p-3 shadow-xl z-30 pointer-events-none text-center">
                         <p className="font-semibold text-white mb-1">Motivo do Bloqueio:</p>
-                        <p className="text-[11px] text-slate-400 break-words">{res.motivo_bloqueio || "Não informado."}</p>
+                        <p className="text-[11px] text-slate-400 break-word">{res.motivo_bloqueio || "Não informado."}</p>
                         <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 border-4 border-transparent border-t-slate-950"></div>
                       </div>
                     </div>
@@ -180,7 +182,7 @@ export default function TabelaRestaurantes({ restaurantes, setRestaurantes, onAc
                         </button>
 
                         <button 
-                          onClick={() => tratarBloqueio(res.id, res.bloqueado)}
+                          onClick={() => tratarBloqueio(res.id, res.bloqueado, res.motivoBloqueio)}
                           className="w-full flex items-center gap-2 px-4 py-2.5 text-xs text-slate-300 hover:bg-slate-900 transition text-left"
                         >
                           <Ban size={14} className={res.bloqueado ? "text-emerald-500" : "text-amber-500"} />
@@ -206,7 +208,10 @@ export default function TabelaRestaurantes({ restaurantes, setRestaurantes, onAc
           ) : (
             <tr>
               <td colSpan="6" className="py-12 text-center text-slate-500">
-                Nenhum estabelecimento corresponde aos filtros aplicados.
+                <div className="flex flex-col items-center justify-center gap-2">
+                  <AlertCircle size={20} className="text-slate-600" />
+                  <span>Nenhum restaurante cadastrado ou encontrado.</span>
+                </div>
               </td>
             </tr>
           )}

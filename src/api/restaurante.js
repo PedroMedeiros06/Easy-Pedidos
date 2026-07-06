@@ -1,7 +1,7 @@
 const BASE_URL = "http://localhost:3000/restaurantes";
 
 export const restauranteApi = {
-  listar: async () => {
+  listar: async (Limite) => {
     const res = await fetch(BASE_URL);
     if (!res.ok) throw new Error("Erro ao buscar restaurantes");
     return res.json();

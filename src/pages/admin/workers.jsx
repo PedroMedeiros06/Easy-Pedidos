@@ -10,26 +10,29 @@ export default function Funcionarios() {
   const [ordem, setOrdem] = useState("A-Z");
   const [filtraStatus, setFiltraStatus] = useState("todos");
   
+  // 🌟 Estado do Dropdown de Limite
+  const [limite, setLimite] = useState(10);
+  
   // Estados do Modal e Controle de Edição
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [funcionarioParaEditar, setFuncionarioParaEditar] = useState(null); // 🌟 NOVO: Controla quem editar
+  const [funcionarioParaEditar, setFuncionarioParaEditar] = useState(null);
 
   // Estados dos Dados da API
   const [funcionarios, setFuncionarios] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState(null);
 
-  // Busca dados do NestJS
-  const buscarDadosDoBanco = async () => {
+  // 🔄 Busca dados do NestJS (Atualizado para receber e aplicar o limite)
+  const buscarDadosDoBanco = async (limiteAtual = limite) => {
     try {
       setCarregando(true);
       setErro(null);
-      const response = await fetch("http://localhost:3000/funcionarios");
+      // Passando o limite dinâmico via query params para a sua rota NestJS
+      const response = await fetch(`http://localhost:3000/funcionarios?limite=${limiteAtual}`);
 
       if (!response.ok) throw new Error("Erro ao carregar funcionários.");
       
       const dados = await response.json();
-      console.log(dados)
       setFuncionarios(dados);
     } catch (err) {
       setErro(err.message);
@@ -38,31 +41,36 @@ export default function Funcionarios() {
     }
   };
 
+  // Dispara a busca inicial e monitora as mudanças no dropdown de limite
   useEffect(() => {
-    buscarDadosDoBanco();
-  }, []);
+    buscarDadosDoBanco(limite);
+  }, [limite]);
+
+  // 🌟 Função para gerenciar a troca de limite pelo dropdown
+  const handleLimiteChange = (e) => {
+    const novoLimite = Number(e.target.value);
+    setLimite(novoLimite);
+  };
 
   const alternarOrdem = () => setOrdem(prev => prev === "A-Z" ? "Z-A" : "A-Z");
 
-  // Função disparada ao clicar em "Editar Dados / Telas" na tabela
   const lidarComEditar = (funcionario) => {
-    setFuncionarioParaEditar(funcionario); // Define qual funcionário vai preencher o modal
-    setIsModalOpen(true);                  // Abre o modal
-  };
-
-  // Função disparada ao clicar no botão de Criar Novo
-  const lidarComNovoFuncionario = () => {
-    setFuncionarioParaEditar(null); // 🔒 Limpa o estado para garantir que abra no modo CRIAÇÃO
+    setFuncionarioParaEditar(funcionario);
     setIsModalOpen(true);
   };
 
-  // Lógica de Filtro aplicada sobre os dados de funcionários em tempo real
+  const lidarComNovoFuncionario = () => {
+    setFuncionarioParaEditar(null);
+    setIsModalOpen(true);
+  };
+
+  // Lógica de Filtro em tempo real mantida idêntica
   const funcionariosFiltrados = funcionarios
     .filter(func => {
       const nomeFunc = func.nome?.toLowerCase() || "";
       const cpfFunc = (func.cpf || "").toLowerCase();
       const cargoFunc = (func.cargo || "").toLowerCase();
-      const restauranteVinculado = (func.restauranteNome || "").toLowerCase();
+      const restauranteVinculado = (func.restauranteNome || func.restaurante?.nome || "").toLowerCase();
       const termo = pesquisa.toLowerCase();
 
       const batePesquisa = 
@@ -71,14 +79,15 @@ export default function Funcionarios() {
         cargoFunc.includes(termo) ||
         restauranteVinculado.includes(termo);
       
+      // Mapeia o status de acordo com o que vem da API nest
       const statusFunc = func.bloqueado ? "suspenso" : "liberado";
       const bateStatus = filtraStatus === "todos" ? true : statusFunc === filtraStatus;
       
       return batePesquisa && bateStatus;
     })
     .sort((a, b) => {
-      if (ordem === "A-Z") return a.nome.localeCompare(b.nome);
-      return b.nome.localeCompare(a.nome);
+      if (ordem === "A-Z") return (a.nome || "").localeCompare(b.nome || "");
+      return (b.nome || "").localeCompare(a.nome || "");
     });
 
   return (
@@ -91,7 +100,7 @@ export default function Funcionarios() {
           <p className="text-sm text-slate-400 mt-1">Gerencie a equipe, cargos e permissões de acesso integradas ao sistema.</p>
         </div>
         <button 
-          onClick={lidarComNovoFuncionario} // 🌟 Atualizado
+          onClick={lidarComNovoFuncionario}
           className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 transition px-5 py-3 rounded-xl text-sm font-semibold shadow-lg shadow-blue-600/10"
         >
           <Plus size={18} /> Novo Funcionário
@@ -99,11 +108,13 @@ export default function Funcionarios() {
       </div>
 
       {/* COMPONENTE DE FILTROS */}
-      <FiltrosFuncionarios 
-        pesquisa={pesquisa} setPesquisa={setPesquisa}
-        ordem={ordem} alternarOrdem={alternarOrdem}
-        filtraStatus={filtraStatus} setFiltraStatus={setFiltraStatus}
-      />
+      <div className="mb-6">
+        <FiltrosFuncionarios 
+          pesquisa={pesquisa} setPesquisa={setPesquisa}
+          ordem={ordem} alternarOrdem={alternarOrdem}
+          filtraStatus={filtraStatus} setFiltraStatus={setFiltraStatus}
+        />
+      </div>
 
       {/* RENDERIZAÇÃO CONDICIONAL */}
       {carregando ? (
@@ -116,17 +127,44 @@ export default function Funcionarios() {
           <AlertTriangle size={32} className="text-amber-500 mb-2" />
           <h3 className="text-sm font-semibold text-white">Falha na conexão</h3>
           <p className="text-xs text-slate-400 max-w-xs">{erro}</p>
-          <button onClick={buscarDadosDoBanco} className="mt-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-medium rounded-xl text-slate-200">
+          <button 
+            onClick={() => buscarDadosDoBanco(limite)} 
+            className="mt-4 px-4 py-2 bg-slate-800 hover:bg-slate-700 text-xs font-medium rounded-xl text-slate-200"
+          >
             Tentar novamente
           </button>
         </div>
       ) : (
-        /* TABELA DE COMPONENTES */
-        <TabelaFuncionarios 
-          funcionarios={funcionariosFiltrados} 
-          onActionSuccess={buscarDadosDoBanco} 
-          onEditarClick={lidarComEditar} // 🌟 Passando o callback de clique em editar
-        />
+        <>
+          {/* TABELA DE COMPONENTES */}
+          <TabelaFuncionarios 
+            funcionarios={funcionariosFiltrados}
+            setFuncionarios={setFuncionarios} 
+            onActionSuccess={() => buscarDadosDoBanco(limite)} 
+            onEditarClick={lidarComEditar}
+          />
+
+          {/* 🌟 FILTRO DE LIMITE INFERIOR ACOPLADO */}
+          <div className="flex justify-end items-center gap-2 mt-4 px-2 text-xs">
+            <span className="text-slate-500 font-medium">Exibir quantidade:</span>
+            <select
+              value={limite}
+              onChange={handleLimiteChange}
+              disabled={carregando}
+              className="bg-slate-950 border border-slate-800 text-slate-300 rounded-xl pl-3 pr-10 py-2 font-medium shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-600 transition cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed appearance-none"
+              style={{
+                backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2394a3b8'><path stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/></svg>")`,
+                backgroundRepeat: 'no-repeat',
+                backgroundPosition: 'right 0.75rem center',
+                backgroundSize: '1rem'
+              }}
+            >
+              <option value={10}>10 funcionários</option>
+              <option value={50}>50 funcionários</option>
+              <option value={100}>100 funcionários</option>
+            </select>
+          </div>
+        </>
       )}
 
       {/* MODAL DUPLO (CRIAÇÃO / EDIÇÃO) */}
@@ -134,10 +172,10 @@ export default function Funcionarios() {
         isOpen={isModalOpen} 
         onClose={() => {
           setIsModalOpen(false);
-          setFuncionarioParaEditar(null); // Limpa o estado ao fechar
+          setFuncionarioParaEditar(null);
         }} 
-        onSuccess={buscarDadosDoBanco} 
-        funcionarioParaEditar={funcionarioParaEditar} // 🌟 Nova propriedade repassada
+        onSuccess={() => buscarDadosDoBanco(limite)} 
+        funcionarioParaEditar={funcionarioParaEditar}
       />
 
     </div>

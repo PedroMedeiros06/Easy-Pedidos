@@ -74,7 +74,7 @@ export function useRestaurantes() {
 
   return {
     restaurantesFiltrados,
-    setRestaurantes, // Mantido caso sua tabela manipule o estado localmente
+    setRestaurantes,
     carregando,
     erro,
     pesquisa,
