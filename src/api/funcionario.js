@@ -1,4 +1,4 @@
-const BASE_URL = "http://localhost:3000/funcionarios";
+const BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:3000") + "/funcionarios";
 
 export const funcionarioApi = {
   listar: async (Limite) => {
