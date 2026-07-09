@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { Store, CreditCard, Lock, Loader2, AlertCircle } from "lucide-react";
 import { BASE_URL } from "../../api/Auth";
 
-// Máscara de CPF em tempo real (000.000.000-00)
 const formatarCPF = (value) => {
   return value
     .replace(/\D/g, "")
@@ -37,6 +36,7 @@ export default function Login() {
     setCarregando(true);
     setErro("");
 
+    console.log(BASE_URL)
     try {
       const response = await fetch(`${BASE_URL}/login`, {
         method: "POST",
