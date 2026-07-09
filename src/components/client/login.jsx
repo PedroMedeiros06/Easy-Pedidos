@@ -36,7 +36,7 @@ export default function Login() {
     setCarregando(true);
     setErro("");
 
-    console.log(BASE_URL)
+    console.log(base)
     try {
       const response = await fetch(`${BASE_URL}/login`, {
         method: "POST",
