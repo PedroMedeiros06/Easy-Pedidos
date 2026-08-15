@@ -1,12 +1,11 @@
 import React, { useState } from "react";
 import { CheckCircle, Ban, Trash2, ShieldAlert, MoreVertical, MessageSquare, Edit3, AlertCircle } from "lucide-react";
-import { restauranteApi } from "../../api/restaurante"; // 🌟 Camada de API centralizada
+import { companyApi } from "../../api/base/company";
 
 export default function TabelaRestaurantes({ restaurantes, setRestaurantes, onActionSuccess, onEditarClick }) {
   const [menuAbertoId, setMenuAbertoId] = useState(null);
 
   const tratarBloqueio = async (id, statusAtual, motivoAtual) => {
-    // Se ele já estiver bloqueado (bloqueado = true), o novo status ativo será true (desbloquear)
     const novoStatusAtivo = statusAtual; 
     const acaoTexto = novoStatusAtivo ? "liberação" : "bloqueio";
 
@@ -14,12 +13,10 @@ export default function TabelaRestaurantes({ restaurantes, setRestaurantes, onAc
     if (motivo === null) return; // Cancela se o usuário clicar em Cancelar
 
     try {
-      // 🌟 Ajustado para passar o objeto { ativo, motivo } correto para a API do NestJS
-      await restauranteApi.alterarStatus(id, novoStatusAtivo, motivo)
+      await companyApi.changeState(id, novoStatusAtivo, motivo)
       
       setMenuAbertoId(null);
-
-      // Atualiza o estado na memória imediatamente para refletir na interface sem lag
+      
       if (setRestaurantes) {
         setRestaurantes((listaAtual) => 
           listaAtual.map((res) => 
@@ -44,7 +41,7 @@ export default function TabelaRestaurantes({ restaurantes, setRestaurantes, onAc
     if (!confirm("⚠️ ATENÇÃO: Isso apagará permanentemente o restaurante e TODOS os funcionários dele. Continuar?")) return;
 
     try {
-      const dados = await restauranteApi.deletar(id);
+      const dados = await companyApi.delet(id);
 
       alert(dados?.mensagem || "Restaurante removido com sucesso!");
       setMenuAbertoId(null);

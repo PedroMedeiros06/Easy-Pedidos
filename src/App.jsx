@@ -14,7 +14,7 @@ import AdminFuncionarios from "./pages/admin/workers";
 import AdminFinance from "./pages/admin/Finance";
 
 // PÁGINAS DO CLIENTE (Donos de Restaurante / Funcionários)
-import Login from "./components/client/login";
+import Login from "./pages/login";
 // import ClienteDashboard from "./pages/cliente/Dashboard";
 // import CardapioProdutos from "./pages/cliente/Produtos";
 // import CaixaPedidos from "./pages/cliente/Pedidos";
