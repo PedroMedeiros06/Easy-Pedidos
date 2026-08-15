@@ -1,14 +1,15 @@
-const BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:3000") + "/restaurantes";
+const BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:3000") + "/company";
 
 
-export const restauranteApi = {
-  listar: async (Limite) => {
+export const companyApi = {
+
+  list: async (Limit) => {
     const res = await fetch(BASE_URL);
-    if (!res.ok) throw new Error("Erro ao buscar restaurantes");
+    if (!res.ok) throw new Error("Erro ao buscar companias");
     return res.json();
   },
 
-  criar: async (dados) => {
+  create: async (dados) => {
     const res = await fetch(BASE_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -16,21 +17,21 @@ export const restauranteApi = {
     });
     if (!res.ok) {
       const err = await res.json();
-      throw new Error(err.message?.[0] || "Erro ao criar restaurante");
+      throw new Error(err.message?.[0] || "Erro ao criar copania");
     }
     return res.json();
   },
 
-  deletar: async (id) => {
+  delet: async (id) => {
     const res = await fetch(`${BASE_URL}/${id}`, { method: "DELETE" });
     if (!res.ok) {
       const err = await res.json();
-      throw new Error(err.message || "Erro ao deletar restaurante");
+      throw new Error(err.message || "Erro ao deletar compania");
     }
     return res.json();
   },
 
-  alterarStatus: async (id, ativo, motivo) => {
+  changeState: async (id, ativo, motivo) => {
     const res = await fetch(`${BASE_URL}/${id}/status`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -43,7 +44,7 @@ export const restauranteApi = {
     return res.json();
   },
 
-  atualizar: async (id, dados) => {
+  update: async (id, dados) => {
     const res = await fetch(`${BASE_URL}/${id}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -51,7 +52,7 @@ export const restauranteApi = {
     });
     if (!res.ok) {
       const err = await res.json();
-      throw new Error(err.message?.[0] || "Erro ao atualizar restaurante");
+      throw new Error(err.message?.[0] || "Erro ao atualizar compania");
     }
 
     return res.json();

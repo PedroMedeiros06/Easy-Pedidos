@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { restauranteApi } from "../api/restaurante";
+import { companyApi } from "../api/base/company";
 
 const DEBUG  = true
 
@@ -23,7 +23,7 @@ export function useRestaurantes() {
     try {
       setCarregando(true);
       setErro(null);
-      const dados = await restauranteApi.listar();
+      const dados = await companyApi.list(10);
       setRestaurantes(dados);
       if (DEBUG){ console.log((dados))}
     } catch (err) {
