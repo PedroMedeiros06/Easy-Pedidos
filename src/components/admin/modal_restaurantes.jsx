@@ -1,30 +1,41 @@
-import React, { useState, useEffect } from "react";
-import { X, Store, CreditCard, Mail, Lock, Phone, Loader2, User, MapPin, Building } from "lucide-react";
+import { useState, useEffect } from "react";
+import { CreditCard, Mail, Phone, Loader2, User, MapPin, Building, Store } from "lucide-react";
 import { stringToCnpj, stringToCpf, stringToWhatsapp, changeToString } from "../../services/formatString";
 import { companyApi } from "../../api/base/company";
-import { integracoesService } from "../../api/Integraçoes"
+import { integracoesService } from "../../api/integracoes";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Separator } from "@/components/ui/separator";
+
+const FORM_INICIAL = {
+  nome_fantasia: "",
+  razao_social: "",
+  cnpj: "",
+  email: "",
+  whatsapp: "",
+  cep: "",
+  logradouro: "",
+  numero: "",
+  complemento: "",
+  bairro: "",
+  cidade: "",
+  estado: "",
+  nomeDono: "",
+  cpf: "",
+  senha: "",
+};
 
 export default function ModalCriarRestaurante({ isOpen, onClose, onSuccess, restauranteParaEditar }) {
-  const [formData, setFormData] = useState({
-    nome_fantasia: "",
-    razao_social: "",
-    cnpj: "",
-    email: "",
-    whatsapp: "",
-    // Endereço
-    cep: "",
-    logradouro: "",
-    numero: "",
-    complemento: "",
-    bairro: "",
-    cidade: "",
-    estado: "",
-    // Dono
-    nomeDono: "",
-    cpf: "",
-    senha: ""
-  });
-
+  const [formData, setFormData] = useState(FORM_INICIAL);
   const [carregando, setCarregando] = useState(false);
   const [buscandoCnpj, setBuscandoCnpj] = useState(false);
   const [buscandoCep, setBuscandoCep] = useState(false);
@@ -33,49 +44,32 @@ export default function ModalCriarRestaurante({ isOpen, onClose, onSuccess, rest
   const isEdicao = !!restauranteParaEditar;
 
   useEffect(() => {
-    if (isOpen) {
-      if (restauranteParaEditar) {
-        setFormData({
-          nome_fantasia: restauranteParaEditar.nome_fantasia || restauranteParaEditar.nome || "",
-          razao_social: restauranteParaEditar.razao_social || "",
-          cnpj: restauranteParaEditar.cnpj ? stringToCnpj(restauranteParaEditar.cnpj) : "",
-          email: restauranteParaEditar.email || "",
-          whatsapp: restauranteParaEditar.whatsapp ? stringToWhatsapp(restauranteParaEditar.whatsapp) : "",
-          cep: restauranteParaEditar.cep || "",
-          logradouro: restauranteParaEditar.logradouro || "",
-          numero: restauranteParaEditar.numero || "",
-          complemento: restauranteParaEditar.complemento || "",
-          bairro: restauranteParaEditar.bairro || "",
-          cidade: restauranteParaEditar.cidade || "",
-          estado: restauranteParaEditar.estado || "",
-          nomeDono: "",
-          cpf: "",
-          senha: ""
-        });
-      } else {
-        setFormData({
-          nome_fantasia: "",
-          razao_social: "",
-          cnpj: "",
-          email: "",
-          whatsapp: "",
-          cep: "",
-          logradouro: "",
-          numero: "",
-          complemento: "",
-          bairro: "",
-          cidade: "",
-          estado: "",
-          nomeDono: "",
-          cpf: "",
-          senha: ""
-        });
-      }
-      setErro("");
-    }
-  }, [isOpen, restauranteParaEditar]);
+    if (!isOpen) return;
 
-  if (!isOpen) return null;
+    if (restauranteParaEditar) {
+      const legal = restauranteParaEditar.companyLegal || {};
+      const location = restauranteParaEditar.companyLocation || {};
+
+      setFormData({
+        ...FORM_INICIAL,
+        nome_fantasia: restauranteParaEditar.companyName || "",
+        razao_social: legal.registeredName || "",
+        cnpj: legal.cnpj ? stringToCnpj(legal.cnpj) : "",
+        email: restauranteParaEditar.companyEmail || "",
+        whatsapp: legal.whatsapp ? stringToWhatsapp(legal.whatsapp) : "",
+        cep: location.zipCode || "",
+        logradouro: location.street || "",
+        numero: location.number || "",
+        complemento: location.complement || "",
+        bairro: location.district || "",
+        cidade: location.city || "",
+        estado: location.state || "",
+      });
+    } else {
+      setFormData(FORM_INICIAL);
+    }
+    setErro("");
+  }, [isOpen, restauranteParaEditar]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -85,10 +79,9 @@ export default function ModalCriarRestaurante({ isOpen, onClose, onSuccess, rest
     if (name === "whatsapp") valorFormatado = stringToWhatsapp(value);
     if (name === "cnpj") valorFormatado = stringToCnpj(value);
 
-    setFormData(prev => ({ ...prev, [name]: valorFormatado }));
+    setFormData((prev) => ({ ...prev, [name]: valorFormatado }));
   };
 
-  // 🏢 CONSULTA DE CNPJ VIA SERVIÇO
   const handleConsultaCnpj = async (e) => {
     const cnpjLimpo = changeToString(e.target.value);
     if (!cnpjLimpo || cnpjLimpo.length !== 14) return;
@@ -96,15 +89,15 @@ export default function ModalCriarRestaurante({ isOpen, onClose, onSuccess, rest
     try {
       setBuscandoCnpj(true);
       setErro("");
-      
+
       const data = await integracoesService.buscarCnpj(cnpjLimpo);
 
       if (data) {
-        setFormData(prev => ({
+        setFormData((prev) => ({
           ...prev,
           razao_social: data.razao_social || prev.razao_social,
           nome_fantasia: data.nome_fantasia || prev.nome_fantasia,
-          cep: data.cep ? data.cep.replace(/\D/g, '') : prev.cep,
+          cep: data.cep ? data.cep.replace(/\D/g, "") : prev.cep,
           logradouro: data.logradouro || prev.logradouro,
           numero: data.numero || prev.numero,
           complemento: data.complemento || prev.complemento,
@@ -120,7 +113,6 @@ export default function ModalCriarRestaurante({ isOpen, onClose, onSuccess, rest
     }
   };
 
-  // 📍 CONSULTA DE CEP VIA SERVIÇO
   const handleConsultaCep = async (e) => {
     const cepLimpo = changeToString(e.target.value);
     if (!cepLimpo || cepLimpo.length !== 8) return;
@@ -132,7 +124,7 @@ export default function ModalCriarRestaurante({ isOpen, onClose, onSuccess, rest
       const data = await integracoesService.buscarCep(cepLimpo);
 
       if (data) {
-        setFormData(prev => ({
+        setFormData((prev) => ({
           ...prev,
           logradouro: data.logradouro || prev.logradouro,
           bairro: data.bairro || prev.bairro,
@@ -152,34 +144,43 @@ export default function ModalCriarRestaurante({ isOpen, onClose, onSuccess, rest
     setCarregando(true);
     setErro("");
 
-    const dadosHigienizados = {
-      nome_fantasia: formData.nome_fantasia,
-      razao_social: formData.razao_social || undefined,
-      email: formData.email,
+    const companyLegal = {
       cnpj: changeToString(formData.cnpj) || undefined,
+      tradeName: formData.nome_fantasia || undefined,
+      registeredName: formData.razao_social || undefined,
       whatsapp: changeToString(formData.whatsapp) || undefined,
-      cep: changeToString(formData.cep) || undefined,
-      logradouro: formData.logradouro || undefined,
-      numero: formData.numero || undefined,
-      complemento: formData.complemento || undefined,
-      bairro: formData.bairro || undefined,
-      cidade: formData.cidade || undefined,
-      estado: formData.estado || undefined,
+    };
+
+    const companyLocation = {
+      zipCode: changeToString(formData.cep) || undefined,
+      street: formData.logradouro || undefined,
+      number: formData.numero || undefined,
+      complement: formData.complemento || undefined,
+      district: formData.bairro || undefined,
+      city: formData.cidade || undefined,
+      state: formData.estado || undefined,
     };
 
     try {
       if (isEdicao) {
-        await companyApi.update(restauranteParaEditar.id, dadosHigienizados);
+        await companyApi.update(restauranteParaEditar.companyId, {
+          companyName: formData.nome_fantasia,
+          companyEmail: formData.email,
+          companyLegal,
+          companyLocation,
+        });
         alert("Estabelecimento atualizado com sucesso!");
       } else {
-        const dadosCriacao = {
-          ...dadosHigienizados,
-          nomeDono: formData.nomeDono,
-          cpf: changeToString(formData.cpf),
-          senha: formData.senha
-        };
-        await companyApi.create(dadosCriacao);
-        alert("Estabelecimento e Dono Mestre criados com sucesso!");
+        await companyApi.create({
+          companyName: formData.nome_fantasia,
+          companyEmail: formData.email,
+          companyLegal,
+          companyLocation,
+          ownerName: formData.nomeDono,
+          ownerCpf: changeToString(formData.cpf),
+          ownerPassword: formData.senha,
+        });
+        alert("Estabelecimento e responsável cadastrados com sucesso!");
       }
 
       if (onSuccess) onSuccess();
@@ -192,308 +193,298 @@ export default function ModalCriarRestaurante({ isOpen, onClose, onSuccess, rest
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Overlay Backdrop */}
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose}></div>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col p-0 gap-0">
+        <DialogHeader className="px-6 pt-6 pb-4">
+          <DialogTitle className="flex items-center gap-2 text-foreground">
+            <Store size={18} className="text-brand" />
+            {isEdicao ? "Editar Informações do Parceiro" : "Cadastrar Novo Parceiro"}
+          </DialogTitle>
+        </DialogHeader>
 
-      {/* MODAL CONTAINER - Ajustado para max-w-4xl e flex flex-col para ter cabeçalho/rodape fixos */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-4xl max-h-[90vh] shadow-2xl z-10 flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-        
-        {/* HEADER (Fixo no topo) */}
-        <div className="flex justify-between items-center px-6 py-4 border-b border-slate-800 bg-slate-900/80 backdrop-blur-md">
-          <div className="flex items-center gap-2 text-blue-500">
-            <Store size={20} />
-            <h2 className="text-lg font-bold text-white">
-              {isEdicao ? "Editar Informações do Parceiro" : "Cadastrar Novo Parceiro"}
-            </h2>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-200 transition p-1.5 rounded-lg hover:bg-slate-800">
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* FORMULÁRIO COM ROLAGEM AUMENTADA E CUSTOMIZADA */}
-        <form id="form-restaurante" onSubmit={handleSalvar} className="custom-scrollbar flex-1 overflow-y-auto p-6 space-y-6">
-          
+        <form
+          id="form-restaurante"
+          onSubmit={handleSalvar}
+          className="flex-1 overflow-y-auto px-6 space-y-6"
+        >
           {erro && (
-            <div className="bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs px-4 py-3 rounded-xl font-medium">
-              {erro}
-            </div>
+            <Alert variant="destructive">
+              <AlertDescription>{erro}</AlertDescription>
+            </Alert>
           )}
 
-          {/* SEÇÃO 1: DADOS DO ESTABELECIMENTO */}
-          <div>
-            <h3 className="text-xs font-semibold text-blue-400 uppercase tracking-wider mb-3">1. Informações da Empresa</h3>
+          <div className="space-y-4">
+            <h3 className="text-xs font-semibold text-brand uppercase tracking-wider">
+              1. Informações da Empresa
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              
-              <div>
-                <label className="text-xs text-slate-400 font-medium block mb-1.5">CNPJ (opicional)</label>
+              <div className="space-y-1.5">
+                <Label htmlFor="cnpj">CNPJ (opcional)</Label>
                 <div className="relative">
-                  <CreditCard className="absolute left-3.5 top-3 text-slate-500" size={16} />
-                  <input
+                  <CreditCard className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+                  <Input
+                    id="cnpj"
                     type="text"
                     name="cnpj"
                     value={formData.cnpj}
                     onChange={handleInputChange}
                     onBlur={handleConsultaCnpj}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition font-mono"
+                    className="pl-8 font-mono"
                     placeholder="00.000.000/0000-00"
                   />
-                  {buscandoCnpj && <Loader2 size={16} className="absolute right-3.5 top-3 animate-spin text-blue-400" />}
+                  {buscandoCnpj && (
+                    <Loader2 size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-brand" />
+                  )}
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs text-slate-400 font-medium block mb-1.5">Nome Fantasia</label>
+              <div className="space-y-1.5">
+                <Label htmlFor="nome_fantasia">Nome Fantasia</Label>
                 <div className="relative">
-                  <Store className="absolute left-3.5 top-3 text-slate-500" size={16} />
-                  <input
+                  <Store className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+                  <Input
                     required
+                    id="nome_fantasia"
                     type="text"
                     name="nome_fantasia"
                     value={formData.nome_fantasia}
                     onChange={handleInputChange}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition"
+                    className="pl-8"
                     placeholder="Ex: Burger House"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs text-slate-400 font-medium block mb-1.5">Razão Social</label>
+              <div className="space-y-1.5">
+                <Label htmlFor="razao_social">Razão Social</Label>
                 <div className="relative">
-                  <Building className="absolute left-3.5 top-3 text-slate-500" size={16} />
-                  <input
+                  <Building className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+                  <Input
+                    id="razao_social"
                     type="text"
                     name="razao_social"
                     value={formData.razao_social}
                     onChange={handleInputChange}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition"
+                    className="pl-8"
                     placeholder="Ex: Burger House Alimentação LTDA"
                   />
                 </div>
               </div>
 
-              <div>
-                <label className="text-xs text-slate-400 font-medium block mb-1.5">E-mail Comercial</label>
+              <div className="space-y-1.5">
+                <Label htmlFor="email">E-mail Comercial</Label>
                 <div className="relative">
-                  <Mail className="absolute left-3.5 top-3 text-slate-500" size={16} />
-                  <input
+                  <Mail className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+                  <Input
                     required
+                    id="email"
                     type="email"
                     name="email"
                     value={formData.email}
                     onChange={handleInputChange}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition"
+                    className="pl-8"
                     placeholder="comercial@restaurante.com"
                   />
                 </div>
               </div>
 
-              <div className="md:col-span-2">
-                <label className="text-xs text-slate-400 font-medium block mb-1.5">WhatsApp de Atendimento</label>
+              <div className="md:col-span-2 space-y-1.5">
+                <Label htmlFor="whatsapp">WhatsApp de Atendimento</Label>
                 <div className="relative">
-                  <Phone className="absolute left-3.5 top-3 text-slate-500" size={16} />
-                  <input
+                  <Phone className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+                  <Input
                     required
+                    id="whatsapp"
                     type="text"
                     name="whatsapp"
                     value={formData.whatsapp}
                     onChange={handleInputChange}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition font-mono"
+                    className="pl-8 font-mono"
                     placeholder="(00) 00000-0000"
                   />
                 </div>
               </div>
-
             </div>
           </div>
 
-          {/* SEÇÃO 2: ENDEREÇO DA EMPRESA */}
-          <div className="border-t border-slate-800/60 pt-4">
-            <h3 className="text-xs font-semibold text-blue-400 uppercase tracking-wider mb-3">2. Endereço e Localização</h3>
+          <Separator />
+
+          <div className="space-y-4">
+            <h3 className="text-xs font-semibold text-brand uppercase tracking-wider">
+              2. Endereço e Localização
+            </h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              
-              <div>
-                <label className="text-xs text-slate-400 font-medium block mb-1.5">CEP</label>
+              <div className="space-y-1.5">
+                <Label htmlFor="cep">CEP</Label>
                 <div className="relative">
-                  <MapPin className="absolute left-3.5 top-3 text-slate-500" size={16} />
-                  <input
+                  <MapPin className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+                  <Input
+                    id="cep"
                     type="text"
                     name="cep"
                     value={formData.cep}
                     onChange={handleInputChange}
                     onBlur={handleConsultaCep}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition font-mono"
+                    className="pl-8 font-mono"
                     placeholder="00000-000"
                   />
-                  {buscandoCep && <Loader2 size={16} className="absolute right-3.5 top-3 animate-spin text-blue-400" />}
+                  {buscandoCep && (
+                    <Loader2 size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 animate-spin text-brand" />
+                  )}
                 </div>
               </div>
 
-              <div className="md:col-span-2">
-                <label className="text-xs text-slate-400 font-medium block mb-1.5">Logradouro / Rua</label>
-                <input
+              <div className="md:col-span-2 space-y-1.5">
+                <Label htmlFor="logradouro">Logradouro / Rua</Label>
+                <Input
+                  id="logradouro"
                   type="text"
                   name="logradouro"
                   value={formData.logradouro}
                   onChange={handleInputChange}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition"
                   placeholder="Rua, Avenida, Alameda..."
                 />
               </div>
 
-              <div>
-                <label className="text-xs text-slate-400 font-medium block mb-1.5">Número</label>
-                <input
+              <div className="space-y-1.5">
+                <Label htmlFor="numero">Número</Label>
+                <Input
+                  id="numero"
                   type="text"
                   name="numero"
                   value={formData.numero}
                   onChange={handleInputChange}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition"
                   placeholder="123"
                 />
               </div>
 
-              <div>
-                <label className="text-xs text-slate-400 font-medium block mb-1.5">Complemento</label>
-                <input
+              <div className="space-y-1.5">
+                <Label htmlFor="complemento">Complemento</Label>
+                <Input
+                  id="complemento"
                   type="text"
                   name="complemento"
                   value={formData.complemento}
                   onChange={handleInputChange}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition"
                   placeholder="Apto, Sala, Bloco"
                 />
               </div>
 
-              <div>
-                <label className="text-xs text-slate-400 font-medium block mb-1.5">Bairro</label>
-                <input
+              <div className="space-y-1.5">
+                <Label htmlFor="bairro">Bairro</Label>
+                <Input
+                  id="bairro"
                   type="text"
                   name="bairro"
                   value={formData.bairro}
                   onChange={handleInputChange}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition"
                   placeholder="Centro"
                 />
               </div>
 
-              <div className="md:col-span-2">
-                <label className="text-xs text-slate-400 font-medium block mb-1.5">Cidade</label>
-                <input
+              <div className="md:col-span-2 space-y-1.5">
+                <Label htmlFor="cidade">Cidade</Label>
+                <Input
+                  id="cidade"
                   type="text"
                   name="cidade"
                   value={formData.cidade}
                   onChange={handleInputChange}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition"
                   placeholder="Cidade"
                 />
               </div>
 
-              <div>
-                <label className="text-xs text-slate-400 font-medium block mb-1.5">UF</label>
-                <input
+              <div className="space-y-1.5">
+                <Label htmlFor="estado">UF</Label>
+                <Input
+                  id="estado"
                   type="text"
                   name="estado"
                   maxLength={2}
                   value={formData.estado}
                   onChange={handleInputChange}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl text-center py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition uppercase"
+                  className="text-center uppercase"
                   placeholder="UF"
                 />
               </div>
-
             </div>
           </div>
 
-          {/* SEÇÃO 3: DADOS DO DONO MESTRE (Ocultada se for Edição) */}
           {!isEdicao && (
-            <div className="border-t border-slate-800/60 pt-4">
-              <h3 className="text-xs font-semibold text-blue-400 uppercase tracking-wider mb-3">3. Responsável Legal (Dono)</h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="md:col-span-2">
-                  <label className="text-xs text-slate-400 font-medium block mb-1.5">Nome Completo do Dono</label>
-                  <div className="relative">
-                    <User className="absolute left-3.5 top-3 text-slate-500" size={16} />
-                    <input
-                      required
-                      type="text"
-                      name="nomeDono"
-                      value={formData.nomeDono}
-                      onChange={handleInputChange}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition"
-                      placeholder="Ex: João Silva Costa"
-                    />
+            <>
+              <Separator />
+              <div className="space-y-4 pb-6">
+                <h3 className="text-xs font-semibold text-brand uppercase tracking-wider">
+                  3. Responsável Legal (Dono)
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2 space-y-1.5">
+                    <Label htmlFor="nomeDono">Nome Completo do Dono</Label>
+                    <div className="relative">
+                      <User className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+                      <Input
+                        required
+                        id="nomeDono"
+                        type="text"
+                        name="nomeDono"
+                        value={formData.nomeDono}
+                        onChange={handleInputChange}
+                        className="pl-8"
+                        placeholder="Ex: João Silva Costa"
+                      />
+                    </div>
                   </div>
-                </div>
 
-                <div>
-                  <label className="text-xs text-slate-400 font-medium block mb-1.5">CPF do Dono</label>
-                  <div className="relative">
-                    <CreditCard className="absolute left-3.5 top-3 text-slate-500" size={16} />
-                    <input
-                      required
-                      type="text"
-                      name="cpf"
-                      value={formData.cpf}
-                      onChange={handleInputChange}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition font-mono"
-                      placeholder="000.000.000-00"
-                    />
+                  <div className="space-y-1.5">
+                    <Label htmlFor="cpf">CPF do Dono</Label>
+                    <div className="relative">
+                      <CreditCard className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" size={16} />
+                      <Input
+                        required
+                        id="cpf"
+                        type="text"
+                        name="cpf"
+                        value={formData.cpf}
+                        onChange={handleInputChange}
+                        className="pl-8 font-mono"
+                        placeholder="000.000.000-00"
+                      />
+                    </div>
                   </div>
-                </div>
 
-                <div>
-                  <label className="text-xs text-slate-400 font-medium block mb-1.5">Senha Provisória de Acesso</label>
-                  <div className="relative">
-                    <Lock className="absolute left-3.5 top-3 text-slate-500" size={16} />
-                    <input
+                  <div className="space-y-1.5">
+                    <Label htmlFor="senha">Senha Provisória de Acesso</Label>
+                    <Input
                       required
+                      id="senha"
                       type="password"
                       name="senha"
                       value={formData.senha}
                       onChange={handleInputChange}
-                      className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-sm text-slate-200 focus:outline-none focus:border-blue-500 transition"
                       placeholder="Mínimo 6 caracteres"
                     />
                   </div>
                 </div>
               </div>
-            </div>
+            </>
           )}
         </form>
 
-        {/* RODAPÉ DO MODAL (Fixo na parte inferior) */}
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-800 bg-slate-900/80 backdrop-blur-md">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={carregando}
-            className="px-5 py-2 text-sm font-medium text-slate-400 hover:text-slate-200 rounded-xl hover:bg-slate-800 transition disabled:opacity-50"
-          >
+        <DialogFooter className="mx-0 mb-0 px-6 py-4 border-t border-border">
+          <Button type="button" variant="outline" onClick={onClose} disabled={carregando}>
             Cancelar
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
             form="form-restaurante"
             disabled={carregando || buscandoCnpj || buscandoCep}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-xl text-sm font-semibold shadow-lg shadow-blue-600/10 transition disabled:opacity-50 disabled:cursor-not-allowed"
+            className="bg-brand text-brand-foreground hover:bg-brand/90"
           >
-            {carregando ? (
-              <>
-                <Loader2 size={16} className="animate-spin" />
-                Salvando no Banco...
-              </>
-            ) : isEdicao ? (
-              "Salvar Alterações"
-            ) : (
-              "Concluir Cadastro"
-            )}
-          </button>
-        </div>
-
-      </div>
-    </div>
+            {carregando && <Loader2 size={16} className="animate-spin" />}
+            {carregando ? "Salvando..." : isEdicao ? "Salvar Alterações" : "Concluir Cadastro"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

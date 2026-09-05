@@ -13,6 +13,12 @@ dist-ssr
 *.local
 .env
 
+# Ferramentas locais de agente/skill (Claude Code) — não fazem parte do app
+.agents
+.claude
+.mcp.json
+skills-lock.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
