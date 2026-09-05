@@ -1,60 +1,25 @@
-const BASE_URL = (import.meta.env.VITE_API_URL || "http://localhost:3000") + "/company";
-
+import { apiFetch } from "../httpClient";
 
 export const companyApi = {
+  list: (limit = 10) => apiFetch(`/companies?limit=${limit}`),
 
-  list: async (Limit) => {
-    const res = await fetch(BASE_URL);
-    if (!res.ok) throw new Error("Erro ao buscar companias");
-    return res.json();
-  },
+  findById: (id) => apiFetch(`/companies/${id}`),
 
-  create: async (dados) => {
-    const res = await fetch(BASE_URL, {
+  create: (payload) =>
+    apiFetch("/companies", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(dados),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message?.[0] || "Erro ao criar copania");
-    }
-    return res.json();
-  },
+      body: JSON.stringify(payload),
+    }),
 
-  delet: async (id) => {
-    const res = await fetch(`${BASE_URL}/${id}`, { method: "DELETE" });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message || "Erro ao deletar compania");
-    }
-    return res.json();
-  },
-
-  changeState: async (id, ativo, motivo) => {
-    const res = await fetch(`${BASE_URL}/${id}/status`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ativo, motivo }),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message || "Erro ao alterar status");
-    }
-    return res.json();
-  },
-
-  update: async (id, dados) => {
-    const res = await fetch(`${BASE_URL}/${id}`, {
+  update: (id, payload) =>
+    apiFetch(`/companies/${id}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(dados),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.message?.[0] || "Erro ao atualizar compania");
-    }
+      body: JSON.stringify(payload),
+    }),
 
-    return res.json();
-  }
+  updateStatus: (id, blocked, reason) =>
+    apiFetch(`/companies/${id}/status`, {
+      method: "PATCH",
+      body: JSON.stringify({ blocked, reason }),
+    }),
 };
