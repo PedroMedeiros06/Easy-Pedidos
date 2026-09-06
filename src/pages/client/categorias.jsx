@@ -1,9 +1,10 @@
-import { useState } from "react";
-import { Plus, Search, Tag, MoreVertical, Edit3, Trash2, AlertCircle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Plus, Search, Tag, MoreVertical, Edit3, Trash2, AlertCircle, AlertTriangle, Loader2 } from "lucide-react";
 import ModalCategoria from "../../components/client/modal_categoria";
+import { categoriesApi } from "../../api/catalog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -19,21 +20,36 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-// TODO: trocar por chamada real à API de categorias (catalog_items/categories) quando o endpoint existir.
-const CATEGORIAS_EXEMPLO = [
-  { id: "cat-1", nome: "Lanches", descricao: "Hambúrgueres e sanduíches", itens: 6 },
-  { id: "cat-2", nome: "Acompanhamentos", descricao: "Porções e adicionais", itens: 3 },
-  { id: "cat-3", nome: "Bebidas", descricao: "Refrigerantes, sucos e água", itens: 5 },
-];
-
 export default function Categorias() {
-  const [categorias, setCategorias] = useState(CATEGORIAS_EXEMPLO);
+  const [categorias, setCategorias] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(null);
+
   const [pesquisa, setPesquisa] = useState("");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [categoriaParaEditar, setCategoriaParaEditar] = useState(null);
+  const [excluindoId, setExcluindoId] = useState(null);
+
+  const buscarDadosDoBanco = async () => {
+    try {
+      setCarregando(true);
+      setErro(null);
+
+      const dados = await categoriesApi.list();
+      setCategorias(dados);
+    } catch (err) {
+      setErro(err.message);
+    } finally {
+      setCarregando(false);
+    }
+  };
+
+  useEffect(() => {
+    buscarDadosDoBanco();
+  }, []);
 
   const categoriasFiltradas = categorias.filter((cat) =>
-    cat.nome.toLowerCase().includes(pesquisa.toLowerCase()),
+    (cat.categoryName || "").toLowerCase().includes(pesquisa.toLowerCase()),
   );
 
   const abrirParaCriar = () => {
@@ -46,22 +62,18 @@ export default function Categorias() {
     setIsModalOpen(true);
   };
 
-  const salvarCategoria = async (dados) => {
-    if (dados.id) {
-      setCategorias((atual) =>
-        atual.map((cat) => (cat.id === dados.id ? { ...cat, ...dados } : cat)),
-      );
-    } else {
-      setCategorias((atual) => [
-        ...atual,
-        { id: `cat-${Date.now()}`, itens: 0, ...dados },
-      ]);
-    }
-  };
+  const excluirCategoria = async (categoria) => {
+    if (!confirm(`Excluir a categoria "${categoria.categoryName}"?`)) return;
 
-  const excluirCategoria = (id) => {
-    if (!confirm("Excluir esta categoria? Os produtos vinculados a ela ficarão sem categoria.")) return;
-    setCategorias((atual) => atual.filter((cat) => cat.id !== id));
+    try {
+      setExcluindoId(categoria.categoryId);
+      await categoriesApi.remove(categoria.categoryId);
+      await buscarDadosDoBanco();
+    } catch (err) {
+      alert(`Erro ao excluir categoria: ${err.message}`);
+    } finally {
+      setExcluindoId(null);
+    }
   };
 
   return (
@@ -91,79 +103,92 @@ export default function Categorias() {
         </div>
       </div>
 
-      <div className="bg-card border border-border rounded-2xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Categoria</TableHead>
-                <TableHead>Descrição</TableHead>
-                <TableHead>Produtos</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
+      {carregando ? (
+        <Card>
+          <CardContent className="p-12 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+            <Loader2 size={24} className="animate-spin text-brand" />
+            <span className="text-sm">Buscando dados no banco...</span>
+          </CardContent>
+        </Card>
+      ) : erro ? (
+        <Card>
+          <CardContent className="p-8 flex flex-col items-center justify-center gap-2 text-center">
+            <AlertTriangle size={32} className="text-amber-500 mb-1" />
+            <h3 className="text-sm font-semibold text-foreground">Falha na conexão</h3>
+            <p className="text-xs text-muted-foreground max-w-xs">{erro}</p>
+            <Button variant="outline" size="sm" onClick={buscarDadosDoBanco} className="mt-3">
+              Tentar novamente
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Categoria</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
+                </TableRow>
+              </TableHeader>
 
-            <TableBody>
-              {categoriasFiltradas.length > 0 ? (
-                categoriasFiltradas.map((cat) => (
-                  <TableRow key={cat.id}>
-                    <TableCell>
-                      <div className="flex items-center gap-3">
-                        <div className="size-8 rounded-lg bg-brand/10 text-brand flex items-center justify-center shrink-0">
-                          <Tag size={14} />
+              <TableBody>
+                {categoriasFiltradas.length > 0 ? (
+                  categoriasFiltradas.map((cat) => (
+                    <TableRow key={cat.categoryId}>
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="size-8 rounded-lg bg-brand/10 text-brand flex items-center justify-center shrink-0">
+                            <Tag size={14} />
+                          </div>
+                          <span className="font-semibold text-foreground">{cat.categoryName}</span>
                         </div>
-                        <span className="font-semibold text-foreground">{cat.nome}</span>
+                      </TableCell>
+
+                      <TableCell className="text-muted-foreground">
+                        {cat.active ? "Ativa" : "Inativa"}
+                      </TableCell>
+
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" disabled={excluindoId === cat.categoryId}>
+                              <MoreVertical size={16} />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => abrirParaEditar(cat)}>
+                              <Edit3 size={14} className="text-brand" />
+                              Editar
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => excluirCategoria(cat)}
+                              className="text-rose-500 focus:text-rose-500"
+                            >
+                              <Trash2 size={14} />
+                              Excluir
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={3} className="py-12 text-center text-muted-foreground">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <AlertCircle size={20} />
+                        <span>Nenhuma categoria cadastrada ou encontrada.</span>
                       </div>
                     </TableCell>
-
-                    <TableCell className="text-muted-foreground">
-                      {cat.descricao || "—"}
-                    </TableCell>
-
-                    <TableCell>
-                      <Badge variant="outline" className="text-muted-foreground">
-                        {cat.itens} {cat.itens === 1 ? "produto" : "produtos"}
-                      </Badge>
-                    </TableCell>
-
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreVertical size={16} />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => abrirParaEditar(cat)}>
-                            <Edit3 size={14} className="text-brand" />
-                            Editar
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => excluirCategoria(cat.id)}
-                            className="text-rose-500 focus:text-rose-500"
-                          >
-                            <Trash2 size={14} />
-                            Excluir
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
                   </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={4} className="py-12 text-center text-muted-foreground">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <AlertCircle size={20} />
-                      <span>Nenhuma categoria cadastrada ou encontrada.</span>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </div>
-      </div>
+      )}
 
       <ModalCategoria
         isOpen={isModalOpen}
@@ -171,7 +196,7 @@ export default function Categorias() {
           setIsModalOpen(false);
           setCategoriaParaEditar(null);
         }}
-        onSalvar={salvarCategoria}
+        onSuccess={buscarDadosDoBanco}
         categoriaParaEditar={categoriaParaEditar}
       />
     </div>

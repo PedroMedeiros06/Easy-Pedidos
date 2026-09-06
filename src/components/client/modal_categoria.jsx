@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Tag, Loader2 } from "lucide-react";
+import { categoriesApi } from "../../api/catalog";
 import {
   Dialog,
   DialogContent,
@@ -12,9 +13,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
-const FORM_INICIAL = { nome: "", descricao: "" };
+const FORM_INICIAL = { categoryName: "" };
 
-export default function ModalCategoria({ isOpen, onClose, onSalvar, categoriaParaEditar = null }) {
+export default function ModalCategoria({ isOpen, onClose, onSuccess, categoriaParaEditar = null }) {
   const isEdicao = !!categoriaParaEditar;
 
   const [formData, setFormData] = useState(FORM_INICIAL);
@@ -26,8 +27,7 @@ export default function ModalCategoria({ isOpen, onClose, onSalvar, categoriaPar
 
     if (isEdicao) {
       setFormData({
-        nome: categoriaParaEditar.nome || "",
-        descricao: categoriaParaEditar.descricao || "",
+        categoryName: categoriaParaEditar.categoryName || "",
       });
     } else {
       setFormData(FORM_INICIAL);
@@ -43,7 +43,7 @@ export default function ModalCategoria({ isOpen, onClose, onSalvar, categoriaPar
   const handleSalvar = async (e) => {
     e.preventDefault();
 
-    if (!formData.nome.trim()) {
+    if (!formData.categoryName.trim()) {
       setErro("Informe um nome para a categoria.");
       return;
     }
@@ -52,11 +52,15 @@ export default function ModalCategoria({ isOpen, onClose, onSalvar, categoriaPar
     setErro("");
 
     try {
-      await onSalvar({
-        id: categoriaParaEditar?.id,
-        nome: formData.nome.trim(),
-        descricao: formData.descricao.trim(),
-      });
+      const payload = { categoryName: formData.categoryName.trim() };
+
+      if (isEdicao) {
+        await categoriesApi.update(categoriaParaEditar.categoryId, payload);
+      } else {
+        await categoriesApi.create(payload);
+      }
+
+      if (onSuccess) onSuccess();
       onClose();
     } catch (err) {
       setErro(err.message || "Erro ao salvar categoria.");
@@ -82,28 +86,16 @@ export default function ModalCategoria({ isOpen, onClose, onSalvar, categoriaPar
             </Alert>
           )}
 
-          <div className="space-y-1.5">
-            <Label htmlFor="nome">Nome da Categoria</Label>
+          <div className="space-y-1.5 pb-6">
+            <Label htmlFor="categoryName">Nome da Categoria</Label>
             <Input
               required
-              id="nome"
+              id="categoryName"
               type="text"
-              name="nome"
-              value={formData.nome}
+              name="categoryName"
+              value={formData.categoryName}
               onChange={handleInputChange}
               placeholder="Ex: Lanches"
-            />
-          </div>
-
-          <div className="space-y-1.5 pb-6">
-            <Label htmlFor="descricao">Descrição (opcional)</Label>
-            <Input
-              id="descricao"
-              type="text"
-              name="descricao"
-              value={formData.descricao}
-              onChange={handleInputChange}
-              placeholder="Ex: Hambúrgueres e sanduíches"
             />
           </div>
         </form>

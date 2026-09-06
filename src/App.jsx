@@ -22,6 +22,7 @@ import ClientComandas from "./pages/client/comandas";
 import ClientPedidos from "./pages/client/pedidos";
 import ClientProdutos from "./pages/client/produtos";
 import ClientCategorias from "./pages/client/categorias";
+import ClientIngredientes from "./pages/client/ingredientes";
 import ClientEquipe from "./pages/client/equipe";
 
 // PÁGINA PÚBLICA (Cliente Final / Vitrine do Estabelecimento)
@@ -82,6 +83,7 @@ export default function App() {
             <Route path="pedidos" element={<ClientPedidos />} />
             <Route path="produtos" element={<ClientProdutos />} />
             <Route path="categorias" element={<ClientCategorias />} />
+            <Route path="ingredientes" element={<ClientIngredientes />} />
             <Route path="equipe" element={<ClientEquipe />} />
           </Route>
 

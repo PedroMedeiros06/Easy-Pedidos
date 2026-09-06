@@ -8,6 +8,7 @@ import {
   ReceiptText,
   Package,
   Tag,
+  Boxes,
   Users,
 } from "lucide-react";
 
@@ -90,6 +91,11 @@ export default function ClientLayout() {
             <NavLink to="categorias" className={linkClass}>
               <Tag size={16} />
               Categorias
+            </NavLink>
+
+            <NavLink to="ingredientes" className={linkClass}>
+              <Boxes size={16} />
+              Ingredientes
             </NavLink>
 
             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider px-3 mt-4 mb-1 block">

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Plus,
   Search,
@@ -8,11 +8,15 @@ import {
   Edit3,
   Trash2,
   AlertCircle,
+  AlertTriangle,
+  Loader2,
 } from "lucide-react";
 import ModalProduto from "../../components/client/modal_produto";
+import { categoriesApi, catalogItemsApi } from "../../api/catalog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -35,38 +39,23 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// TODO: trocar por chamada real à API de produtos (catalog_items) quando o endpoint existir.
-const CATEGORIAS_EXEMPLO = [
-  { id: "cat-1", nome: "Lanches" },
-  { id: "cat-2", nome: "Acompanhamentos" },
-  { id: "cat-3", nome: "Bebidas" },
-];
-
-const PRODUTOS_EXEMPLO = [
-  { id: "1", nome: "X-Burger Clássico", categoriaId: "cat-1", preco: 24.9, descontoValor: 0, tipoDesconto: "valor", estoque: null, ativo: true },
-  { id: "2", nome: "X-Salada", categoriaId: "cat-1", preco: 26.9, descontoValor: 10, tipoDesconto: "percentual", estoque: null, ativo: true },
-  { id: "3", nome: "X-Bacon", categoriaId: "cat-1", preco: 29.9, descontoValor: 0, tipoDesconto: "valor", estoque: 40, ativo: true },
-  { id: "4", nome: "Batata Frita P", categoriaId: "cat-2", preco: 12.0, descontoValor: 0, tipoDesconto: "valor", estoque: 25, ativo: true },
-  { id: "5", nome: "Batata Frita G", categoriaId: "cat-2", preco: 18.0, descontoValor: 2, tipoDesconto: "valor", estoque: 25, ativo: true },
-  { id: "6", nome: "Coca-Cola Lata", categoriaId: "cat-3", preco: 6.5, descontoValor: 0, tipoDesconto: "valor", estoque: 80, ativo: true },
-  { id: "7", nome: "Suco Natural", categoriaId: "cat-3", preco: 9.0, descontoValor: 0, tipoDesconto: "valor", estoque: 15, ativo: false },
-];
-
-function formatarMoeda(valor) {
-  return valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+function formatarMoeda(centavos) {
+  return (centavos / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function calcularPrecoFinal(produto) {
+function calcularPrecoFinalCentavos(produto) {
   const desconto =
-    produto.tipoDesconto === "percentual"
-      ? produto.preco * (Math.min(produto.descontoValor, 100) / 100)
-      : produto.descontoValor;
-  return Math.max(produto.preco - desconto, 0);
+    produto.discountType === "percentage"
+      ? produto.priceCents * (Math.min(produto.discountValue, 100) / 100)
+      : produto.discountValue;
+  return Math.max(produto.priceCents - desconto, 0);
 }
 
 export default function Produtos() {
-  const [produtos, setProdutos] = useState(PRODUTOS_EXEMPLO);
-  const [categorias] = useState(CATEGORIAS_EXEMPLO);
+  const [produtos, setProdutos] = useState([]);
+  const [categorias, setCategorias] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [erro, setErro] = useState(null);
 
   const [pesquisa, setPesquisa] = useState("");
   const [ordem, setOrdem] = useState("A-Z");
@@ -74,6 +63,26 @@ export default function Produtos() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [produtoParaEditar, setProdutoParaEditar] = useState(null);
+  const [excluindoId, setExcluindoId] = useState(null);
+
+  const buscarDadosDoBanco = async () => {
+    try {
+      setCarregando(true);
+      setErro(null);
+
+      const [itens, cats] = await Promise.all([catalogItemsApi.list(), categoriesApi.list()]);
+      setProdutos(itens);
+      setCategorias(cats);
+    } catch (err) {
+      setErro(err.message);
+    } finally {
+      setCarregando(false);
+    }
+  };
+
+  useEffect(() => {
+    buscarDadosDoBanco();
+  }, []);
 
   const alternarOrdem = () => setOrdem((prev) => (prev === "A-Z" ? "Z-A" : "A-Z"));
 
@@ -87,29 +96,29 @@ export default function Produtos() {
     setIsModalOpen(true);
   };
 
-  const salvarProduto = async (dados) => {
-    if (dados.id) {
-      setProdutos((atual) => atual.map((p) => (p.id === dados.id ? { ...p, ...dados } : p)));
-    } else {
-      setProdutos((atual) => [...atual, { id: `prod-${Date.now()}`, ...dados }]);
+  const excluirProduto = async (produto) => {
+    if (!confirm(`Excluir o produto "${produto.itemName}" do cardápio?`)) return;
+
+    try {
+      setExcluindoId(produto.itemId);
+      await catalogItemsApi.remove(produto.itemId);
+      await buscarDadosDoBanco();
+    } catch (err) {
+      alert(`Erro ao excluir produto: ${err.message}`);
+    } finally {
+      setExcluindoId(null);
     }
   };
 
-  const excluirProduto = (id) => {
-    if (!confirm("Excluir este produto do cardápio?")) return;
-    setProdutos((atual) => atual.filter((p) => p.id !== id));
-  };
-
-  const nomeCategoria = (categoriaId) =>
-    categorias.find((cat) => cat.id === categoriaId)?.nome || "Sem categoria";
-
   const produtosFiltrados = produtos
     .filter((p) => {
-      const bateNome = p.nome.toLowerCase().includes(pesquisa.toLowerCase());
-      const bateCategoria = filtraCategoria === "todas" ? true : p.categoriaId === filtraCategoria;
+      const bateNome = (p.itemName || "").toLowerCase().includes(pesquisa.toLowerCase());
+      const bateCategoria = filtraCategoria === "todas" ? true : p.categoryId === filtraCategoria;
       return bateNome && bateCategoria;
     })
-    .sort((a, b) => (ordem === "A-Z" ? a.nome.localeCompare(b.nome) : b.nome.localeCompare(a.nome)));
+    .sort((a, b) =>
+      ordem === "A-Z" ? a.itemName.localeCompare(b.itemName) : b.itemName.localeCompare(a.itemName),
+    );
 
   return (
     <div className="space-y-6 relative">
@@ -150,8 +159,8 @@ export default function Produtos() {
             <SelectContent>
               <SelectItem value="todas">Todas as categorias</SelectItem>
               {categorias.map((cat) => (
-                <SelectItem key={cat.id} value={cat.id}>
-                  {cat.nome}
+                <SelectItem key={cat.categoryId} value={cat.categoryId}>
+                  {cat.categoryName}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -159,117 +168,136 @@ export default function Produtos() {
         </div>
       </div>
 
-      <div className="bg-card border border-border rounded-2xl overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Produto</TableHead>
-                <TableHead>Categoria</TableHead>
-                <TableHead>Preço</TableHead>
-                <TableHead>Estoque</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-
-            <TableBody>
-              {produtosFiltrados.length > 0 ? (
-                produtosFiltrados.map((produto) => {
-                  const temDesconto = produto.descontoValor > 0;
-                  const precoFinal = calcularPrecoFinal(produto);
-
-                  return (
-                    <TableRow key={produto.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="size-8 rounded-lg bg-muted border border-border flex items-center justify-center shrink-0">
-                            <Package size={14} className="text-muted-foreground" />
-                          </div>
-                          <span className="font-semibold text-foreground">{produto.nome}</span>
-                        </div>
-                      </TableCell>
-
-                      <TableCell className="text-muted-foreground">
-                        {nomeCategoria(produto.categoriaId)}
-                      </TableCell>
-
-                      <TableCell>
-                        {temDesconto ? (
-                          <div className="flex flex-col">
-                            <span className="text-xs text-muted-foreground line-through">
-                              {formatarMoeda(produto.preco)}
-                            </span>
-                            <span className="font-semibold text-brand">{formatarMoeda(precoFinal)}</span>
-                          </div>
-                        ) : (
-                          <span className="font-semibold text-foreground">{formatarMoeda(produto.preco)}</span>
-                        )}
-                      </TableCell>
-
-                      <TableCell className="text-muted-foreground font-mono text-xs">
-                        {produto.estoque === null ? "Ilimitado" : produto.estoque}
-                      </TableCell>
-
-                      <TableCell>
-                        {produto.ativo ? (
-                          <Badge
-                            variant="outline"
-                            className="gap-1.5 text-emerald-500 border-emerald-500/20 bg-emerald-500/10"
-                          >
-                            <span className="size-1.5 rounded-full bg-emerald-500" />
-                            Disponível
-                          </Badge>
-                        ) : (
-                          <Badge
-                            variant="outline"
-                            className="gap-1.5 text-muted-foreground border-border bg-muted/40"
-                          >
-                            <span className="size-1.5 rounded-full bg-muted-foreground" />
-                            Oculto
-                          </Badge>
-                        )}
-                      </TableCell>
-
-                      <TableCell className="text-right">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon">
-                              <MoreVertical size={16} />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => abrirParaEditar(produto)}>
-                              <Edit3 size={14} className="text-brand" />
-                              Editar
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={() => excluirProduto(produto.id)}
-                              className="text-rose-500 focus:text-rose-500"
-                            >
-                              <Trash2 size={14} />
-                              Excluir
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              ) : (
+      {carregando ? (
+        <Card>
+          <CardContent className="p-12 flex flex-col items-center justify-center gap-3 text-muted-foreground">
+            <Loader2 size={24} className="animate-spin text-brand" />
+            <span className="text-sm">Buscando dados no banco...</span>
+          </CardContent>
+        </Card>
+      ) : erro ? (
+        <Card>
+          <CardContent className="p-8 flex flex-col items-center justify-center gap-2 text-center">
+            <AlertTriangle size={32} className="text-amber-500 mb-1" />
+            <h3 className="text-sm font-semibold text-foreground">Falha na conexão</h3>
+            <p className="text-xs text-muted-foreground max-w-xs">{erro}</p>
+            <Button variant="outline" size="sm" onClick={buscarDadosDoBanco} className="mt-3">
+              Tentar novamente
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
                 <TableRow>
-                  <TableCell colSpan={6} className="py-12 text-center text-muted-foreground">
-                    <div className="flex flex-col items-center justify-center gap-2">
-                      <AlertCircle size={20} />
-                      <span>Nenhum produto cadastrado ou encontrado.</span>
-                    </div>
-                  </TableCell>
+                  <TableHead>Produto</TableHead>
+                  <TableHead>Categoria</TableHead>
+                  <TableHead>Preço</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Ações</TableHead>
                 </TableRow>
-              )}
-            </TableBody>
-          </Table>
+              </TableHeader>
+
+              <TableBody>
+                {produtosFiltrados.length > 0 ? (
+                  produtosFiltrados.map((produto) => {
+                    const temDesconto = produto.discountValue > 0;
+                    const precoFinalCentavos = calcularPrecoFinalCentavos(produto);
+
+                    return (
+                      <TableRow key={produto.itemId}>
+                        <TableCell>
+                          <div className="flex items-center gap-3">
+                            <div className="size-8 rounded-lg bg-muted border border-border flex items-center justify-center shrink-0">
+                              <Package size={14} className="text-muted-foreground" />
+                            </div>
+                            <span className="font-semibold text-foreground">{produto.itemName}</span>
+                          </div>
+                        </TableCell>
+
+                        <TableCell className="text-muted-foreground">
+                          {produto.categoryName || "Sem categoria"}
+                        </TableCell>
+
+                        <TableCell>
+                          {temDesconto ? (
+                            <div className="flex flex-col">
+                              <span className="text-xs text-muted-foreground line-through">
+                                {formatarMoeda(produto.priceCents)}
+                              </span>
+                              <span className="font-semibold text-brand">
+                                {formatarMoeda(precoFinalCentavos)}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="font-semibold text-foreground">
+                              {formatarMoeda(produto.priceCents)}
+                            </span>
+                          )}
+                        </TableCell>
+
+                        <TableCell>
+                          {produto.active ? (
+                            <Badge
+                              variant="outline"
+                              className="gap-1.5 text-emerald-500 border-emerald-500/20 bg-emerald-500/10"
+                            >
+                              <span className="size-1.5 rounded-full bg-emerald-500" />
+                              Disponível
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="outline"
+                              className="gap-1.5 text-muted-foreground border-border bg-muted/40"
+                            >
+                              <span className="size-1.5 rounded-full bg-muted-foreground" />
+                              Oculto
+                            </Badge>
+                          )}
+                        </TableCell>
+
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" disabled={excluindoId === produto.itemId}>
+                                <MoreVertical size={16} />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem onClick={() => abrirParaEditar(produto)}>
+                                <Edit3 size={14} className="text-brand" />
+                                Editar
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => excluirProduto(produto)}
+                                className="text-rose-500 focus:text-rose-500"
+                              >
+                                <Trash2 size={14} />
+                                Excluir
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={5} className="py-12 text-center text-muted-foreground">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <AlertCircle size={20} />
+                        <span>Nenhum produto cadastrado ou encontrado.</span>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
         </div>
-      </div>
+      )}
 
       <ModalProduto
         isOpen={isModalOpen}
@@ -277,7 +305,7 @@ export default function Produtos() {
           setIsModalOpen(false);
           setProdutoParaEditar(null);
         }}
-        onSalvar={salvarProduto}
+        onSuccess={buscarDadosDoBanco}
         produtoParaEditar={produtoParaEditar}
         categorias={categorias}
       />
