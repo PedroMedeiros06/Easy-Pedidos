@@ -3,7 +3,9 @@
 
 export type CategoriaErroPedido =
   | "estoque"
+  | "estoque_quantidade"
   | "adicional"
+  | "removivel"
   | "item_indisponivel"
   | "item_inexistente"
   | "desconto"
@@ -29,12 +31,33 @@ export function tratarErroPedido(err: unknown): ErroPedidoTratado {
   const msg = texto(err).trim();
   const lower = msg.toLowerCase();
 
+  // "Só há estoque para N unidade(s) de "<item>" (ingrediente "<x>")." — dá pra apontar quantas cabem.
+  const matchQtd = msg.match(/só há estoque para\s+(\d+)\s+unidade/i);
+  if (matchQtd) {
+    const n = matchQtd[1];
+    return {
+      categoria: "estoque_quantidade",
+      titulo: `Só temos ${n} unidade(s)`,
+      detalhe: msg,
+      acao: `Reduza a quantidade desse item para ${n} ou menos, ou reponha o estoque em Ingredientes.`,
+    };
+  }
+
   if (lower.includes("estoque insuficiente")) {
     return {
       categoria: "estoque",
       titulo: "Sem estoque para este pedido",
       detalhe: msg,
       acao: "Reduza a quantidade, remova o item, ou reponha o estoque do ingrediente em Ingredientes.",
+    };
+  }
+
+  if (lower.includes("não podem ser removidos")) {
+    return {
+      categoria: "removivel",
+      titulo: "Remoção inválida",
+      detalhe: msg,
+      acao: "Recarregue o cardápio — o que pode ser removido de um item pode ter mudado. Refaça a seleção.",
     };
   }
 

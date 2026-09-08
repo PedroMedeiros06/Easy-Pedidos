@@ -1,7 +1,8 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Store, CreditCard, Lock, Loader2, AlertCircle, UtensilsCrossed } from "lucide-react";
 import { authApi } from "../api/base/auth";
+import { consumirMotivoBloqueio } from "../api/httpClient";
 import { changeToString, stringToCpf } from "../services/formatString";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +20,12 @@ export default function Login() {
 
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Se o httpClient deslogou por estabelecimento bloqueado (403), mostra o motivo.
+  useEffect(() => {
+    const motivo = consumirMotivoBloqueio();
+    if (motivo) setError(motivo);
+  }, []);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;

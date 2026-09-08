@@ -11,7 +11,8 @@ export default function AlertaErroPedido({ erro, tema = "light" }: Props) {
   if (!erro) return null;
 
   const escuro = tema === "dark";
-  const Icone = erro.categoria === "estoque" ? PackageX : erro.categoria === "generico" ? Info : AlertTriangle;
+  const ehEstoque = erro.categoria === "estoque" || erro.categoria === "estoque_quantidade";
+  const Icone = ehEstoque ? PackageX : erro.categoria === "generico" ? Info : AlertTriangle;
 
   const wrap = escuro
     ? "bg-rose-500/10 border-rose-500/30 text-rose-100"

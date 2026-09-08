@@ -5,6 +5,7 @@ import {
   DollarSign,
   LogOut,
   UserCircle,
+  Activity,
 } from "lucide-react";
 
 export default function Sidebar() {
@@ -69,6 +70,15 @@ export default function Sidebar() {
           <NavLink to="financeiro" className={linkClass}>
             <DollarSign size={16} />
             Faturamento Global
+          </NavLink>
+
+          <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider px-3 mt-4 mb-1 block">
+            Sistema
+          </span>
+
+          <NavLink to="status" className={linkClass}>
+            <Activity size={16} />
+            Status do Sistema
           </NavLink>
         </nav>
       </div>

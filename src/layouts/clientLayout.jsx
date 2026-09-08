@@ -10,6 +10,7 @@ import {
   Tag,
   Boxes,
   Users,
+  Settings,
 } from "lucide-react";
 
 export default function ClientLayout() {
@@ -31,6 +32,21 @@ export default function ClientLayout() {
     member = null;
   }
 
+  let company = null;
+  try {
+    company = JSON.parse(localStorage.getItem("@App:company") || "null");
+  } catch {
+    company = null;
+  }
+
+  const saudacao = (() => {
+    const h = new Date().getHours();
+    if (h < 12) return "Bom dia";
+    if (h < 18) return "Boa tarde";
+    return "Boa noite";
+  })();
+  const primeiroNome = (member?.member_name || "").trim().split(" ")[0];
+
   const handleLogout = () => {
     localStorage.removeItem("@App:token");
     localStorage.removeItem("@App:refresh_token");
@@ -46,8 +62,12 @@ export default function ClientLayout() {
       <aside className="fixed top-0 left-0 h-screen w-64 bg-card text-card-foreground border-r border-border flex flex-col justify-between">
         <div>
           <div className="border-b border-border p-6">
-            <h1 className="text-xl font-bold tracking-tight text-foreground">Pedidos App</h1>
-            <p className="text-xs text-muted-foreground mt-1">Painel do Estabelecimento</p>
+            <h1 className="text-xl font-bold tracking-tight text-foreground truncate">
+              {company?.company_name || "Meu Estabelecimento"}
+            </h1>
+            <p className="text-xs text-muted-foreground mt-1">
+              {primeiroNome ? `${saudacao}, ${primeiroNome}` : saudacao}
+            </p>
           </div>
 
           <nav className="flex flex-col gap-1 p-4">
@@ -109,7 +129,12 @@ export default function ClientLayout() {
           </nav>
         </div>
 
-        <div className="p-4 border-t border-border">
+        <div className="p-4 border-t border-border space-y-2">
+          <NavLink to="configuracoes" className={linkClass}>
+            <Settings size={16} />
+            Configurações
+          </NavLink>
+
           <div className="flex items-center gap-2.5 rounded-xl bg-muted/50 border border-border p-2">
             <div className="size-9 rounded-lg bg-brand/10 text-brand flex items-center justify-center shrink-0">
               <UserCircle size={18} />

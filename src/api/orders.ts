@@ -30,9 +30,21 @@ export const ordersApi = {
       body: JSON.stringify(payload),
     }),
 
-  updateStatus: (id: string, status: OrderStatus) =>
-    apiFetch<Order>(`/orders/${id}/status`, {
+  updateStatus: (id: string, status: OrderStatus) => {
+    const VALIDOS: OrderStatus[] = [
+      "pending",
+      "confirmed",
+      "preparing",
+      "ready",
+      "completed",
+      "cancelled",
+    ];
+    if (!VALIDOS.includes(status)) {
+      return Promise.reject(new Error(`Status inválido: ${String(status)}`));
+    }
+    return apiFetch<Order>(`/orders/${id}/status`, {
       method: "PATCH",
       body: JSON.stringify({ status }),
-    }),
+    });
+  },
 };

@@ -12,6 +12,7 @@ import Dashboard from "./pages/admin/dashboard";
 import Restaurantes from "./pages/admin/restaurantes";
 import AdminFuncionarios from "./pages/admin/workers";
 import AdminFinance from "./pages/admin/finance";
+import AdminStatus from "./pages/admin/status";
 
 // PÁGINAS DO CLIENTE (Donos de Restaurante / Funcionários)
 import Login from "./pages/login";
@@ -24,6 +25,7 @@ import ClientProdutos from "./pages/client/produtos";
 import ClientCategorias from "./pages/client/categorias";
 import ClientIngredientes from "./pages/client/ingredientes";
 import ClientEquipe from "./pages/client/equipe";
+import ClientConfiguracoes from "./pages/client/configuracoes";
 
 // PÁGINA PÚBLICA (Cliente Final / Vitrine do Estabelecimento)
 import CatalogoLoja from "./pages/public/catalogoLoja";
@@ -65,6 +67,9 @@ export default function App() {
 
             {/* URL final: http://localhost:5173/admin/financeiro */}
             <Route path="financeiro" element={<AdminFinance />} />
+
+            {/* URL final: http://localhost:5173/admin/status */}
+            <Route path="status" element={<AdminStatus />} />
           </Route>
 
         </Route>
@@ -85,6 +90,7 @@ export default function App() {
             <Route path="categorias" element={<ClientCategorias />} />
             <Route path="ingredientes" element={<ClientIngredientes />} />
             <Route path="equipe" element={<ClientEquipe />} />
+            <Route path="configuracoes" element={<ClientConfiguracoes />} />
           </Route>
 
         </Route>

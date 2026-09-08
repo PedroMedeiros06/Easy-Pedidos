@@ -1,9 +1,26 @@
-import { useState, useEffect, type ChangeEvent, type FormEvent } from "react";
-import { Package, Loader2, Plus, Trash2, Boxes } from "lucide-react";
+import { useState, useEffect, useRef, type ChangeEvent, type FormEvent } from "react";
+import {
+  Package,
+  Loader2,
+  Plus,
+  Trash2,
+  Boxes,
+  ImagePlus,
+  Star,
+  ArrowLeft,
+  ArrowRight,
+  SlidersHorizontal,
+} from "lucide-react";
 import { catalogItemsApi } from "../../api/catalog";
 import { ingredientsApi } from "@/api/ingredients";
+import {
+  MAX_FOTOS_PRODUTO,
+  MAX_UPLOAD_FOTO_BYTES,
+  TIPOS_FOTO_ACEITOS,
+} from "@/types/catalog";
 import type {
   CatalogItem,
+  CatalogItemImage,
   Category,
   CatalogItemIngredientInput,
   Ingredient,
@@ -20,7 +37,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -42,11 +58,13 @@ interface FormState {
 }
 
 // Linha da UI de ingredientes. addonPreco em reais (string), só usado quando role === "addon".
+// removable só vale pra role === "included" (cliente pode tirar no pedido).
 interface LinhaIngrediente {
   ingredientId: string;
   role: "included" | "addon";
   quantityUsed: string;
   addonPreco: string;
+  removable: boolean;
 }
 
 const FORM_INICIAL: FormState = {
@@ -59,12 +77,32 @@ const FORM_INICIAL: FormState = {
   active: true,
 };
 
+type AbaId = "geral" | "ingredientes" | "fotos";
+
+const ABAS: { id: AbaId; rotulo: string; Icone: typeof Package }[] = [
+  { id: "geral", rotulo: "Geral", Icone: SlidersHorizontal },
+  { id: "ingredientes", rotulo: "Ingredientes", Icone: Boxes },
+  { id: "fotos", rotulo: "Fotos", Icone: ImagePlus },
+];
+
 function centavosParaReais(centavos: number): string {
   return (centavos / 100).toFixed(2).replace(".", ",");
 }
 
 function reaisParaCentavos(valor: string): number {
   return Math.round((Number(String(valor).replace(",", ".")) || 0) * 100);
+}
+
+// Valida um arquivo de foto no client antes de mandar pro backend.
+// Retorna mensagem de erro ou null se ok.
+function validarFoto(file: File): string | null {
+  if (!(TIPOS_FOTO_ACEITOS as readonly string[]).includes(file.type)) {
+    return `"${file.name}": formato inválido. Envie JPEG, PNG ou WebP.`;
+  }
+  if (file.size > MAX_UPLOAD_FOTO_BYTES) {
+    return `"${file.name}": excede 5 MB. Envie um arquivo menor.`;
+  }
+  return null;
 }
 
 function calcularPrecoFinalCentavos(
@@ -102,6 +140,13 @@ export default function ModalProduto({
   const [carregandoIngredientes, setCarregandoIngredientes] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+  const [aba, setAba] = useState<AbaId>("geral");
+
+  // ---- Fotos (só em edição; precisa de itemId) ----
+  const [fotos, setFotos] = useState<CatalogItemImage[]>([]);
+  const [fotosBusy, setFotosBusy] = useState(false);
+  const [erroFoto, setErroFoto] = useState("");
+  const inputFotoRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -128,13 +173,21 @@ export default function ModalProduto({
           role: v.role,
           quantityUsed: v.quantityUsed != null ? String(v.quantityUsed) : "",
           addonPreco: v.addonPriceCents != null ? centavosParaReais(v.addonPriceCents) : "",
+          removable: !!v.removable,
         })),
       );
+      const imgs = [...(produtoParaEditar.images ?? [])].sort(
+        (a, b) => a.sortOrder - b.sortOrder,
+      );
+      setFotos(imgs);
     } else {
       setFormData(FORM_INICIAL);
       setLinhas([]);
+      setFotos([]);
     }
     setErro("");
+    setErroFoto("");
+    setAba("geral");
   }, [isOpen, produtoParaEditar]);
 
   useEffect(() => {
@@ -158,7 +211,7 @@ export default function ModalProduto({
   const adicionarLinha = () => {
     setLinhas((prev) => [
       ...prev,
-      { ingredientId: "", role: "included", quantityUsed: "", addonPreco: "" },
+      { ingredientId: "", role: "included", quantityUsed: "", addonPreco: "", removable: false },
     ]);
   };
 
@@ -172,6 +225,105 @@ export default function ModalProduto({
     valor: LinhaIngrediente[K],
   ) => {
     setLinhas((prev) => prev.map((l, i) => (i === index ? { ...l, [campo]: valor } : l)));
+  };
+
+  // ---- Handlers de fotos (edição). Cada ação chama onSuccess pra a lista
+  // externa refletir a nova capa/ordem; o estado local `fotos` fica em sincronia
+  // com o retorno do backend. ----
+
+  const itemId = produtoParaEditar?.itemId ?? null;
+
+  const handleSelecionarFotos = async (e: ChangeEvent<HTMLInputElement>) => {
+    const arquivos = Array.from(e.target.files ?? []);
+    e.target.value = ""; // permite re-selecionar o mesmo arquivo depois
+    if (!itemId || arquivos.length === 0) return;
+
+    setErroFoto("");
+
+    const vagas = MAX_FOTOS_PRODUTO - fotos.length;
+    if (vagas <= 0) {
+      setErroFoto(`Máximo de ${MAX_FOTOS_PRODUTO} fotos por produto.`);
+      return;
+    }
+    const paraEnviar = arquivos.slice(0, vagas);
+    if (arquivos.length > vagas) {
+      setErroFoto(
+        `Só cabem mais ${vagas} foto(s). As demais foram ignoradas.`,
+      );
+    }
+
+    for (const file of paraEnviar) {
+      const msg = validarFoto(file);
+      if (msg) {
+        setErroFoto(msg);
+        return;
+      }
+    }
+
+    setFotosBusy(true);
+    try {
+      for (const file of paraEnviar) {
+        const { images } = await catalogItemsApi.addImage(itemId, file);
+        setFotos(images);
+      }
+      onSuccess();
+    } catch (err) {
+      setErroFoto(err instanceof Error ? err.message : "Erro ao enviar foto.");
+    } finally {
+      setFotosBusy(false);
+    }
+  };
+
+  const handleRemoverFoto = async (imageId: string) => {
+    if (!itemId) return;
+    setErroFoto("");
+    setFotosBusy(true);
+    try {
+      const { images } = await catalogItemsApi.removeImage(itemId, imageId);
+      setFotos(images);
+      onSuccess();
+    } catch (err) {
+      setErroFoto(err instanceof Error ? err.message : "Erro ao remover foto.");
+    } finally {
+      setFotosBusy(false);
+    }
+  };
+
+  const reordenarFotos = async (novaOrdem: CatalogItemImage[]) => {
+    if (!itemId) return;
+    setErroFoto("");
+    setFotos(novaOrdem); // otimista
+    setFotosBusy(true);
+    try {
+      const { images } = await catalogItemsApi.reorderImages(
+        itemId,
+        novaOrdem.map((f) => f.imageId),
+      );
+      setFotos(images);
+      onSuccess();
+    } catch (err) {
+      setErroFoto(err instanceof Error ? err.message : "Erro ao reordenar fotos.");
+      // reverte pro que o backend tinha
+      onSuccess();
+    } finally {
+      setFotosBusy(false);
+    }
+  };
+
+  const moverFoto = (index: number, dir: -1 | 1) => {
+    const alvo = index + dir;
+    if (alvo < 0 || alvo >= fotos.length) return;
+    const copia = [...fotos];
+    [copia[index], copia[alvo]] = [copia[alvo], copia[index]];
+    void reordenarFotos(copia);
+  };
+
+  const definirCapa = (index: number) => {
+    if (index === 0) return;
+    const copia = [...fotos];
+    const [f] = copia.splice(index, 1);
+    copia.unshift(f);
+    void reordenarFotos(copia);
   };
 
   const precoCentavos = reaisParaCentavos(formData.preco);
@@ -189,11 +341,13 @@ export default function ModalProduto({
     e.preventDefault();
 
     if (!formData.itemName.trim()) {
+      setAba("geral");
       setErro("Informe o nome do produto.");
       return;
     }
 
     if (!formData.preco || precoCentavos <= 0) {
+      setAba("geral");
       setErro("Informe um preço válido.");
       return;
     }
@@ -202,6 +356,7 @@ export default function ModalProduto({
     const linhasPreenchidas = linhas.filter((l) => l.ingredientId);
     const ids = linhasPreenchidas.map((l) => l.ingredientId);
     if (new Set(ids).size !== ids.length) {
+      setAba("ingredientes");
       setErro("Há ingredientes repetidos na receita. Cada ingrediente só pode aparecer uma vez.");
       return;
     }
@@ -210,6 +365,7 @@ export default function ModalProduto({
     for (const l of linhasPreenchidas) {
       const qtd = Number(String(l.quantityUsed).replace(",", "."));
       if (!Number.isFinite(qtd) || qtd <= 0) {
+        setAba("ingredientes");
         setErro("Informe a quantidade usada de cada ingrediente (maior que zero).");
         return;
       }
@@ -220,6 +376,9 @@ export default function ModalProduto({
       };
       if (l.role === "addon") {
         entrada.addonPriceCents = reaisParaCentavos(l.addonPreco);
+      } else if (l.removable) {
+        // Só included pode ser removível; backend ignora removable em addon.
+        entrada.removable = true;
       }
       ingredients.push(entrada);
     }
@@ -261,7 +420,7 @@ export default function ModalProduto({
 
   return (
     <Dialog open={isOpen} onOpenChange={(open: boolean) => !open && onClose()}>
-      <DialogContent className="sm:max-w-lg max-h-[90vh] flex flex-col p-0 gap-0">
+      <DialogContent className="sm:max-w-3xl max-h-[90vh] flex flex-col p-0 gap-0">
         <DialogHeader className="px-6 pt-6 pb-4">
           <DialogTitle className="flex items-center gap-2 text-foreground">
             <Package size={18} className="text-brand" />
@@ -269,10 +428,42 @@ export default function ModalProduto({
           </DialogTitle>
         </DialogHeader>
 
+        {/* Navegação por abas */}
+        <div className="px-6 border-b border-border flex gap-1">
+          {ABAS.map(({ id, rotulo, Icone }) => {
+            const contador =
+              id === "ingredientes"
+                ? linhas.filter((l) => l.ingredientId).length
+                : id === "fotos"
+                  ? fotos.length
+                  : 0;
+            return (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setAba(id)}
+                className={`flex items-center gap-1.5 px-3 py-2.5 text-sm font-medium border-b-2 -mb-px transition ${
+                  aba === id
+                    ? "border-brand text-brand"
+                    : "border-transparent text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <Icone size={15} />
+                {rotulo}
+                {contador > 0 && (
+                  <span className="ml-0.5 rounded-full bg-muted text-muted-foreground text-[10px] font-semibold px-1.5 py-0.5 leading-none">
+                    {contador}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
         <form
           id="form-produto"
           onSubmit={handleSalvar}
-          className="flex-1 overflow-y-auto px-6 space-y-4"
+          className="flex-1 overflow-y-auto px-6 py-4 space-y-4"
         >
           {erro && (
             <Alert variant="destructive">
@@ -280,6 +471,9 @@ export default function ModalProduto({
             </Alert>
           )}
 
+          {/* ===================== Aba: Geral ===================== */}
+          <div className={aba === "geral" ? "space-y-4" : "hidden"}>
+          <div className="grid sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label htmlFor="itemName">Nome do Produto</Label>
             <Input
@@ -304,7 +498,9 @@ export default function ModalProduto({
               placeholder="Ex: Pão, carne, queijo, bacon crocante"
             />
           </div>
+          </div>
 
+          <div className="grid sm:grid-cols-2 gap-4">
           <div className="space-y-1.5">
             <Label htmlFor="categoryId">Categoria</Label>
             <Select
@@ -314,7 +510,12 @@ export default function ModalProduto({
               }
             >
               <SelectTrigger id="categoryId" className="h-10! w-full">
-                <SelectValue placeholder="Selecione uma categoria" />
+                <SelectValue placeholder="Selecione uma categoria">
+                  {(valor: string) =>
+                    categorias.find((c) => c.categoryId === valor)?.categoryName ??
+                    "Selecione uma categoria"
+                  }
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 {categorias.map((cat) => (
@@ -338,6 +539,7 @@ export default function ModalProduto({
               onChange={handleInputChange}
               placeholder="0,00"
             />
+          </div>
           </div>
 
           <div className="space-y-1.5">
@@ -393,10 +595,151 @@ export default function ModalProduto({
             )}
           </div>
 
-          <Separator />
+          <label className="flex items-center gap-3 p-2.5 rounded-lg border border-border hover:bg-muted/40 transition cursor-pointer select-none">
+            <Checkbox
+              checked={formData.active}
+              onCheckedChange={(checked: boolean) =>
+                setFormData((prev) => ({ ...prev, active: !!checked }))
+              }
+            />
+            <div>
+              <div className="text-sm font-medium text-foreground">Disponível no cardápio</div>
+              <div className="text-xs text-muted-foreground">
+                Desmarque para ocultar o produto sem excluí-lo.
+              </div>
+            </div>
+          </label>
+          </div>
 
-          {/* ===================== Ingredientes ===================== */}
-          <div className="space-y-2">
+          {/* ===================== Aba: Fotos ===================== */}
+          <div className={aba === "fotos" ? "space-y-2" : "hidden"}>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ImagePlus size={16} className="text-brand" />
+                <Label className="text-sm">Fotos do Produto</Label>
+              </div>
+              {isEdicao && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => inputFotoRef.current?.click()}
+                  disabled={fotosBusy || fotos.length >= MAX_FOTOS_PRODUTO}
+                >
+                  {fotosBusy ? (
+                    <Loader2 size={14} className="animate-spin" />
+                  ) : (
+                    <Plus size={14} />
+                  )}
+                  Adicionar
+                </Button>
+              )}
+            </div>
+
+            <input
+              ref={inputFotoRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              hidden
+              onChange={handleSelecionarFotos}
+            />
+
+            {!isEdicao ? (
+              <p className="text-xs text-muted-foreground py-2">
+                Salve o produto primeiro para adicionar fotos.
+              </p>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Até {MAX_FOTOS_PRODUTO} fotos (JPEG, PNG ou WebP, máx 5 MB cada).
+                  A primeira é a <span className="font-medium">capa</span>. O
+                  servidor comprime automaticamente.
+                </p>
+
+                {erroFoto && (
+                  <Alert variant="destructive">
+                    <AlertDescription>{erroFoto}</AlertDescription>
+                  </Alert>
+                )}
+
+                {fotos.length === 0 ? (
+                  <p className="text-xs text-muted-foreground py-2">
+                    Nenhuma foto adicionada.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-3 gap-2">
+                    {fotos.map((foto, index) => (
+                      <div
+                        key={foto.imageId}
+                        className="relative group aspect-square rounded-lg overflow-hidden border border-border bg-muted/20"
+                      >
+                        <img
+                          src={foto.url}
+                          alt={`Foto ${index + 1}`}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+
+                        {index === 0 && (
+                          <span className="absolute top-1 left-1 flex items-center gap-1 rounded bg-brand text-brand-foreground text-[10px] font-semibold px-1.5 py-0.5">
+                            <Star size={10} className="fill-current" />
+                            Capa
+                          </span>
+                        )}
+
+                        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-0.5 bg-black/55 p-1 opacity-0 group-hover:opacity-100 transition">
+                          <div className="flex gap-0.5">
+                            <button
+                              type="button"
+                              title="Mover para a esquerda"
+                              disabled={fotosBusy || index === 0}
+                              onClick={() => moverFoto(index, -1)}
+                              className="text-white/90 hover:text-white disabled:opacity-30 p-0.5"
+                            >
+                              <ArrowLeft size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              title="Mover para a direita"
+                              disabled={fotosBusy || index === fotos.length - 1}
+                              onClick={() => moverFoto(index, 1)}
+                              className="text-white/90 hover:text-white disabled:opacity-30 p-0.5"
+                            >
+                              <ArrowRight size={14} />
+                            </button>
+                            {index !== 0 && (
+                              <button
+                                type="button"
+                                title="Definir como capa"
+                                disabled={fotosBusy}
+                                onClick={() => definirCapa(index)}
+                                className="text-white/90 hover:text-white disabled:opacity-30 p-0.5"
+                              >
+                                <Star size={14} />
+                              </button>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            title="Remover foto"
+                            disabled={fotosBusy}
+                            onClick={() => handleRemoverFoto(foto.imageId)}
+                            className="text-rose-300 hover:text-rose-200 disabled:opacity-30 p-0.5"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* ===================== Aba: Ingredientes ===================== */}
+          <div className={aba === "ingredientes" ? "space-y-2" : "hidden"}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Boxes size={16} className="text-brand" />
@@ -446,7 +789,14 @@ export default function ModalProduto({
                         }
                       >
                         <SelectTrigger className="h-9! flex-1">
-                          <SelectValue placeholder="Ingrediente" />
+                          <SelectValue placeholder="Ingrediente">
+                            {(valor: string) => {
+                              const ing = ingredientesDisponiveis.find(
+                                (i) => i.ingredientId === valor,
+                              );
+                              return ing ? `${ing.ingredientName} (${ing.unit})` : "Ingrediente";
+                            }}
+                          </SelectValue>
                         </SelectTrigger>
                         <SelectContent>
                           {ingredientesDisponiveis.map((ing) => (
@@ -532,28 +882,23 @@ export default function ModalProduto({
                         </div>
                       )}
                     </div>
+
+                    {linha.role === "included" && (
+                      <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer select-none pt-0.5">
+                        <Checkbox
+                          checked={linha.removable}
+                          onCheckedChange={(checked: boolean) =>
+                            atualizarLinha(index, "removable", !!checked)
+                          }
+                        />
+                        Cliente pode remover este ingrediente no pedido
+                      </label>
+                    )}
                   </div>
                 ))}
               </div>
             )}
           </div>
-
-          <Separator />
-
-          <label className="flex items-center gap-3 p-2.5 rounded-lg border border-border hover:bg-muted/40 transition cursor-pointer select-none pb-6">
-            <Checkbox
-              checked={formData.active}
-              onCheckedChange={(checked: boolean) =>
-                setFormData((prev) => ({ ...prev, active: !!checked }))
-              }
-            />
-            <div>
-              <div className="text-sm font-medium text-foreground">Disponível no cardápio</div>
-              <div className="text-xs text-muted-foreground">
-                Desmarque para ocultar o produto sem excluí-lo.
-              </div>
-            </div>
-          </label>
         </form>
 
         <DialogFooter className="mx-0 mb-0 px-6 py-4 border-t border-border">

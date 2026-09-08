@@ -154,7 +154,13 @@ export default function Produtos() {
 
           <Select value={filtraCategoria} onValueChange={setFiltraCategoria}>
             <SelectTrigger className="h-10! w-48">
-              <SelectValue placeholder="Categoria" />
+              <SelectValue placeholder="Categoria">
+                {(valor) =>
+                  valor === "todas"
+                    ? "Todas as categorias"
+                    : (categorias.find((c) => c.categoryId === valor)?.categoryName ?? "Categoria")
+                }
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="todas">Todas as categorias</SelectItem>
@@ -210,8 +216,17 @@ export default function Produtos() {
                       <TableRow key={produto.itemId}>
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            <div className="size-8 rounded-lg bg-muted border border-border flex items-center justify-center shrink-0">
-                              <Package size={14} className="text-muted-foreground" />
+                            <div className="size-8 rounded-lg bg-muted border border-border flex items-center justify-center shrink-0 overflow-hidden">
+                              {produto.imageUrl ? (
+                                <img
+                                  src={produto.imageUrl}
+                                  alt={produto.itemName}
+                                  className="size-full object-cover"
+                                  loading="lazy"
+                                />
+                              ) : (
+                                <Package size={14} className="text-muted-foreground" />
+                              )}
                             </div>
                             <span className="font-semibold text-foreground">{produto.itemName}</span>
                           </div>

@@ -20,21 +20,30 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { storefrontApi } from "../../api/storefront";
 import type { Category, CatalogItem, Order } from "@/types/catalog";
-import { extrairAddons } from "@/types/catalog";
-import SeletorAdicionais from "@/components/shared/seletor_adicionais";
+import { extrairAddons, extrairRemoviveis } from "@/types/catalog";
+import SeletorAdicionais, {
+  type PersonalizacaoEscolhida,
+} from "@/components/shared/seletor_adicionais";
+import ModalDetalheProduto from "@/components/shared/modal_detalhe_produto";
 import AlertaErroPedido from "@/components/shared/alerta_erro_pedido";
 import { tratarErroPedido, type ErroPedidoTratado } from "@/lib/erros_pedido";
 import {
   type LinhaCarrinho,
-  type AddonEscolhido,
   adicionarLinha,
   alterarQuantidadeLinha,
   removerLinha,
-  editarAddonsDaLinha,
+  editarPersonalizacaoDaLinha,
   precoItemComDescontoCentavos,
   subtotalLinhaCentavos,
   itemsParaPayload,
+  quantidadeNoCarrinho,
+  podeAdicionarMais,
 } from "@/lib/carrinho";
+
+// Item tem algo pra personalizar? (adicional ou ingrediente removível)
+function temPersonalizacao(item: CatalogItem): boolean {
+  return extrairAddons(item).length > 0 || extrairRemoviveis(item).length > 0;
+}
 
 type TipoEntrega = "retirada" | "entrega";
 
@@ -59,8 +68,9 @@ export default function CatalogoLoja() {
   const [filtroCategoria, setFiltroCategoria] = useState("todos");
   const [carrinho, setCarrinho] = useState<LinhaCarrinho[]>([]);
   const [carrinhoAberto, setCarrinhoAberto] = useState(false);
-  const [itemParaAddons, setItemParaAddons] = useState<CatalogItem | null>(null);
-  // Linha do carrinho em edição de adicionais (reabre o seletor com o que já foi escolhido).
+  // Item aberto no modal de detalhes (fotos + descrição + adicionais + adicionar).
+  const [itemDetalhe, setItemDetalhe] = useState<CatalogItem | null>(null);
+  // Linha do carrinho em edição (reabre o seletor com adicionais/remoções já escolhidos).
   const [linhaEditando, setLinhaEditando] = useState<{ lineId: string; item: CatalogItem } | null>(
     null,
   );
@@ -106,34 +116,52 @@ export default function CatalogoLoja() {
     });
   }, [produtos, busca, filtroCategoria]);
 
+  // Sempre abre o modal de detalhes — a escolha de adicionais/remoções e a
+  // adição ao carrinho acontecem lá dentro.
   const aoClicarAdicionar = (produto: CatalogItem) => {
-    if (extrairAddons(produto).length > 0) {
-      setItemParaAddons(produto);
-    } else {
-      setCarrinho((atual) => adicionarLinha(atual, produto, []));
+    if (produto.available === false) return;
+    if (!podeAdicionarMais(carrinho, produto.itemId, produto.maxQuantity)) return;
+    setItemDetalhe(produto);
+  };
+
+  // Chamado pelo modal de detalhes com os adicionais/remoções já escolhidos.
+  const adicionarDoModal = (produto: CatalogItem) => ({
+    addons,
+    removidos,
+  }: PersonalizacaoEscolhida) => {
+    if (!podeAdicionarMais(carrinho, produto.itemId, produto.maxQuantity)) {
+      setItemDetalhe(null);
+      return;
     }
+    setCarrinho((atual) => adicionarLinha(atual, produto, addons, removidos));
+    setItemDetalhe(null);
   };
 
-  const confirmarAddons = (addons: AddonEscolhido[]) => {
-    if (!itemParaAddons) return;
-    setCarrinho((atual) => adicionarLinha(atual, itemParaAddons, addons));
-    setItemParaAddons(null);
-  };
-
-  const abrirEdicaoAddons = (linha: LinhaCarrinho) => {
+  const abrirEdicaoPersonalizacao = (linha: LinhaCarrinho) => {
     const item = produtos.find((p) => p.itemId === linha.itemId);
-    if (!item || extrairAddons(item).length === 0) return;
+    if (!item || !temPersonalizacao(item)) return;
     setLinhaEditando({ lineId: linha.lineId, item });
   };
 
-  const salvarEdicaoAddons = (addons: AddonEscolhido[]) => {
+  const salvarEdicaoPersonalizacao = ({ addons, removidos }: PersonalizacaoEscolhida) => {
     if (!linhaEditando) return;
-    setCarrinho((atual) => editarAddonsDaLinha(atual, linhaEditando.lineId, addons));
+    setCarrinho((atual) =>
+      editarPersonalizacaoDaLinha(atual, linhaEditando.lineId, addons, removidos),
+    );
     setLinhaEditando(null);
   };
 
   const alterarQuantidade = (lineId: string, delta: number) => {
-    setCarrinho((atual) => alterarQuantidadeLinha(atual, lineId, delta));
+    setCarrinho((atual) => {
+      if (delta > 0) {
+        const linha = atual.find((l) => l.lineId === lineId);
+        const produto = linha && produtos.find((p) => p.itemId === linha.itemId);
+        if (produto && !podeAdicionarMais(atual, produto.itemId, produto.maxQuantity)) {
+          return atual;
+        }
+      }
+      return alterarQuantidadeLinha(atual, lineId, delta);
+    });
   };
 
   const removerItem = (lineId: string) => setCarrinho((atual) => removerLinha(atual, lineId));
@@ -359,27 +387,72 @@ export default function CatalogoLoja() {
                   produto.discountValue,
                   produto.discountType,
                 );
-                const temAddons = extrairAddons(produto).length > 0;
+                const personalizavel = temPersonalizacao(produto);
+                const esgotado = produto.available === false;
+                const noTeto =
+                  !esgotado && !podeAdicionarMais(carrinho, produto.itemId, produto.maxQuantity);
+
+                const capa = produto.imageUrl ?? produto.images?.[0]?.url ?? null;
 
                 return (
                   <div
                     key={produto.itemId}
-                    className="bg-card border border-border rounded-2xl p-5 flex flex-col gap-3"
+                    className={`bg-card border border-border rounded-2xl overflow-hidden flex flex-col ${
+                      esgotado ? "opacity-60" : ""
+                    }`}
                   >
+                    <button
+                      type="button"
+                      onClick={() => setItemDetalhe(produto)}
+                      className="relative aspect-4/3 bg-muted w-full block group"
+                      aria-label={`Ver detalhes de ${produto.itemName}`}
+                    >
+                      {capa ? (
+                        <img
+                          src={capa}
+                          alt={produto.itemName}
+                          className="w-full h-full object-cover transition group-hover:scale-[1.03]"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <span className="w-full h-full flex items-center justify-center text-muted-foreground text-xs">
+                          Sem foto
+                        </span>
+                      )}
+                      <span className="absolute bottom-2 right-2 rounded-full bg-black/55 text-white text-[10px] font-semibold px-2 py-0.5 opacity-0 group-hover:opacity-100 transition">
+                        Ver detalhes
+                      </span>
+                    </button>
+
+                    <div className="p-5 flex flex-col gap-3 flex-1">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <h3 className="font-semibold text-foreground leading-tight">
+                        <button
+                          type="button"
+                          onClick={() => setItemDetalhe(produto)}
+                          className="font-semibold text-foreground leading-tight text-left hover:text-brand transition"
+                        >
                           {produto.itemName}
-                        </h3>
+                        </button>
                         {produto.itemDescription && (
-                          <p className="text-xs text-muted-foreground mt-1">
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
                             {produto.itemDescription}
                           </p>
                         )}
-                        {temAddons && (
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-brand mt-1">
-                            Adicionais disponíveis
+                        {esgotado ? (
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-rose-500 mt-1">
+                            Esgotado
                           </p>
+                        ) : noTeto ? (
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-500 mt-1">
+                            Máximo no carrinho
+                          </p>
+                        ) : (
+                          personalizavel && (
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-brand mt-1">
+                              Personalizável
+                            </p>
+                          )
                         )}
                       </div>
                     </div>
@@ -398,12 +471,14 @@ export default function CatalogoLoja() {
 
                       <Button
                         size="sm"
+                        disabled={esgotado || noTeto}
                         onClick={() => aoClicarAdicionar(produto)}
                         className="bg-brand text-brand-foreground hover:bg-brand/90"
                       >
                         <Plus size={14} />
-                        Adicionar
+                        {esgotado ? "Indisponível" : noTeto ? "No limite" : "Adicionar"}
                       </Button>
+                    </div>
                     </div>
                   </div>
                 );
@@ -457,8 +532,11 @@ export default function CatalogoLoja() {
                   <div className="space-y-2">
                     {carrinho.map((item) => {
                       const produtoBase = produtos.find((p) => p.itemId === item.itemId);
-                      const podeEditarAddons =
-                        !!produtoBase && extrairAddons(produtoBase).length > 0;
+                      const podeEditar = !!produtoBase && temPersonalizacao(produtoBase);
+                      const semNada = item.addons.length === 0 && item.removidos.length === 0;
+                      const teto = produtoBase?.maxQuantity ?? null;
+                      const noTeto =
+                        teto != null && quantidadeNoCarrinho(carrinho, item.itemId) >= teto;
 
                       return (
                       <div
@@ -470,21 +548,27 @@ export default function CatalogoLoja() {
                             <span className="text-sm font-medium text-foreground leading-tight">
                               {item.itemName}
                             </span>
-                            {item.addons.length > 0 ? (
+                            {item.addons.length > 0 && (
                               <span className="block text-[11px] text-muted-foreground mt-0.5">
                                 + {item.addons.map((a) => a.ingredientName).join(", ")}
                               </span>
-                            ) : podeEditarAddons ? (
-                              <span className="block text-[11px] text-muted-foreground mt-0.5">
-                                sem adicionais
+                            )}
+                            {item.removidos.length > 0 && (
+                              <span className="block text-[11px] text-rose-500 mt-0.5">
+                                sem {item.removidos.map((r) => r.ingredientName).join(", ")}
                               </span>
-                            ) : null}
-                            {podeEditarAddons && (
+                            )}
+                            {semNada && podeEditar && (
+                              <span className="block text-[11px] text-muted-foreground mt-0.5">
+                                sem personalização
+                              </span>
+                            )}
+                            {podeEditar && (
                               <button
-                                onClick={() => abrirEdicaoAddons(item)}
+                                onClick={() => abrirEdicaoPersonalizacao(item)}
                                 className="text-[11px] font-semibold text-brand hover:underline mt-1"
                               >
-                                Editar adicionais
+                                Personalizar
                               </button>
                             )}
                           </div>
@@ -508,10 +592,14 @@ export default function CatalogoLoja() {
                             </span>
                             <button
                               onClick={() => alterarQuantidade(item.lineId, 1)}
-                              className="size-6 rounded-md bg-muted flex items-center justify-center text-muted-foreground hover:bg-muted/70 transition"
+                              disabled={noTeto}
+                              className="size-6 rounded-md bg-muted flex items-center justify-center text-muted-foreground hover:bg-muted/70 transition disabled:opacity-30 disabled:cursor-not-allowed"
                             >
                               <Plus size={12} />
                             </button>
+                            {noTeto && (
+                              <span className="text-[10px] text-amber-500 ml-1">máx {teto}</span>
+                            )}
                           </div>
                           <span className="text-sm font-semibold text-brand">
                             {formatarMoeda(subtotalLinhaCentavos(item))}
@@ -652,27 +740,47 @@ export default function CatalogoLoja() {
           </div>
         )}
 
-        {/* Seletor de adicionais */}
-        <SeletorAdicionais
-          item={itemParaAddons}
-          tema="light"
-          onCancelar={() => setItemParaAddons(null)}
-          onConfirmar={confirmarAddons}
-        />
+        {/* Modal de detalhes do produto — fotos, descrição e escolha de adicionais/remoções */}
+        {itemDetalhe &&
+          (() => {
+            const esgotado = itemDetalhe.available === false;
+            const noTeto =
+              !esgotado &&
+              !podeAdicionarMais(carrinho, itemDetalhe.itemId, itemDetalhe.maxQuantity);
+            return (
+              <ModalDetalheProduto
+                item={itemDetalhe}
+                tema="light"
+                bloqueado={esgotado || noTeto}
+                rotuloBotao={
+                  esgotado ? "Indisponível" : noTeto ? "No limite" : "Adicionar ao carrinho"
+                }
+                onFechar={() => setItemDetalhe(null)}
+                onAdicionar={adicionarDoModal(itemDetalhe)}
+              />
+            );
+          })()}
 
-        {/* Edição de adicionais de uma linha já no carrinho */}
+        {/* Edição de uma linha já no carrinho */}
         <SeletorAdicionais
           item={linhaEditando?.item ?? null}
           tema="light"
-          selecaoInicial={
+          addonsIniciais={
             linhaEditando
               ? (carrinho
                   .find((l) => l.lineId === linhaEditando.lineId)
                   ?.addons.map((a) => a.ingredientId) ?? [])
               : undefined
           }
+          removidosIniciais={
+            linhaEditando
+              ? (carrinho
+                  .find((l) => l.lineId === linhaEditando.lineId)
+                  ?.removidos.map((r) => r.ingredientId) ?? [])
+              : undefined
+          }
           onCancelar={() => setLinhaEditando(null)}
-          onConfirmar={salvarEdicaoAddons}
+          onConfirmar={salvarEdicaoPersonalizacao}
         />
 
         {/* Confirmação de pedido enviado */}
